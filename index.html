@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js Project</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #000;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      .controls {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        padding: 10px 12px;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.62);
+        font-size: 13px;
+        line-height: 1.55;
+        pointer-events: none;
+        user-select: none;
+      }
+      .capture-message {
+        font-weight: 700;
+      }
+      .camera-locked .capture-message {
+        display: none;
+      }
+      .crosshair {
+        display: none;
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+      .crosshair::before,
+      .crosshair::after {
+        content: '';
+        position: absolute;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 0 2px #000;
+      }
+      .crosshair::before {
+        left: 6px;
+        width: 2px;
+        height: 14px;
+      }
+      .crosshair::after {
+        top: 6px;
+        width: 14px;
+        height: 2px;
+      }
+      .camera-locked .crosshair {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div class="controls" aria-hidden="true">
+      <div class="capture-message">Click canvas to capture mouse</div>
+      <div>Mouse: look around</div>
+      <div>WASD / arrows: fly</div>
+      <div>Space / Shift: up / down</div>
+      <div>H: hit &nbsp; R: reset &nbsp; 1-3: strength</div>
+    </div>
+    <div class="crosshair" aria-hidden="true"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
