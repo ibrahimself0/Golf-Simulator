@@ -29,17 +29,6 @@ export class CameraSystem {
   private camera: THREE.PerspectiveCamera;
 
   /**
-   * Reference to the Layer 1 camera controller.
-   * We read position/target from this each frame.
-   */
-  private cameraController: BaseCamera;
-
-  /**
-   * Current aspect ratio.
-   */
-  private aspectRatio: number;
-
-  /**
    * Field of view in degrees.
    */
   private fov: number = 60;
@@ -57,9 +46,6 @@ export class CameraSystem {
   private far: number = 1000;
 
   constructor(aspectRatio: number, cameraController: BaseCamera) {
-    this.aspectRatio = aspectRatio;
-    this.cameraController = cameraController;
-
     // Create Three.js perspective camera
     this.camera = new THREE.PerspectiveCamera(this.fov, aspectRatio, this.near, this.far);
 
@@ -85,7 +71,6 @@ export class CameraSystem {
    * @param aspectRatio - New width/height ratio
    */
   updateAspect(aspectRatio: number): void {
-    this.aspectRatio = aspectRatio;
     this.camera.aspect = aspectRatio;
     this.camera.updateProjectionMatrix();
   }

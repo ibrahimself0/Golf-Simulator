@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -19,66 +19,142 @@
       canvas {
         display: block;
       }
-      .controls {
+      .simulation-panels {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        color: #f4f4f4;
+        font-family: system-ui, sans-serif;
+        font-size: 12px;
+      }
+      .sim-panel {
         position: fixed;
         top: 16px;
-        left: 16px;
-        padding: 10px 12px;
-        border-radius: 6px;
+        width: 300px;
+        max-height: calc(100vh - 32px);
+        overflow: hidden;
         background: rgba(0, 0, 0, 0.62);
-        font-size: 13px;
-        line-height: 1.55;
-        pointer-events: none;
-        user-select: none;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        pointer-events: auto;
       }
-      .capture-message {
+      .runtime-panel {
+        left: 16px;
+      }
+      .physics-panel {
+        right: 16px;
+      }
+      .sim-panel__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 8px 10px;
+        border: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+      .sim-panel__body {
+        max-height: calc(100vh - 74px);
+        overflow-y: auto;
+        padding: 8px 10px 10px;
+      }
+      .sim-panel.is-collapsed .sim-panel__body {
+        display: none;
+      }
+      .sim-panel__section {
+        margin: 10px 0 5px;
         font-weight: 700;
       }
-      .camera-locked .capture-message {
-        display: none;
+      .sim-panel__section:first-child {
+        margin-top: 0;
       }
-      .crosshair {
-        display: none;
+      .sim-panel__subsection {
+        margin: 8px 0 4px;
+        opacity: 0.85;
+        font-weight: 600;
+      }
+      .sim-panel__row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        padding: 2px 0;
+      }
+      .sim-panel__control {
+        display: grid;
+        grid-template-columns: 95px 1fr;
+        gap: 8px;
+        align-items: center;
+        padding: 4px 0;
+      }
+      .sim-panel__control-label {
+        opacity: 0.75;
+      }
+      .sim-panel__control-inputs {
+        display: grid;
+        grid-template-columns: 1fr 62px 28px;
+        gap: 6px;
+        align-items: center;
+      }
+      .sim-panel__control-inputs--number-only {
+        grid-template-columns: 1fr 28px;
+      }
+      .sim-panel__control-inputs--number-only input[type='number'] {
+        width: 100%;
+      }
+      .sim-panel__control input {
+        min-width: 0;
+        color: #f4f4f4;
+        font: inherit;
+      }
+      .sim-panel__control input[type='range'] {
+        width: 100%;
+      }
+      .sim-panel__control input[type='number'] {
+        width: 62px;
+        padding: 2px 3px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .sim-panel__unit {
+        min-width: 24px;
+        opacity: 0.6;
+      }
+      .sim-panel__label {
+        opacity: 0.7;
+      }
+      .sim-panel__value {
+        max-width: 150px;
+        overflow: hidden;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sim-complete-popup {
         position: fixed;
         left: 50%;
-        top: 50%;
-        width: 14px;
-        height: 14px;
-        transform: translate(-50%, -50%);
+        bottom: 72px;
+        transform: translateX(-50%);
+        max-width: min(360px, calc(100vw - 32px));
+        padding: 7px 10px;
+        background: rgba(0, 0, 0, 0.68);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        text-align: center;
         pointer-events: none;
       }
-      .crosshair::before,
-      .crosshair::after {
-        content: '';
-        position: absolute;
-        background: rgba(255, 255, 255, 0.9);
-        box-shadow: 0 0 2px #000;
+      .sim-complete-popup[hidden] {
+        display: none;
       }
-      .crosshair::before {
-        left: 6px;
-        width: 2px;
-        height: 14px;
-      }
-      .crosshair::after {
-        top: 6px;
-        width: 14px;
-        height: 2px;
-      }
-      .camera-locked .crosshair {
-        display: block;
-      }
+
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
-    <div class="controls" aria-hidden="true">
-      <div class="capture-message">Click canvas to capture mouse</div>
-      <div>Mouse: look around</div>
-      <div>WASD / arrows: fly</div>
-      <div>Space / Shift: up / down</div>
-      <div>H: hit &nbsp; R: reset &nbsp; 1-3: strength</div>
-    </div>
-    <div class="crosshair" aria-hidden="true"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

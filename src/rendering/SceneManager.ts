@@ -61,7 +61,8 @@ export class SceneManager {
     // Create scene
     this.scene = new THREE.Scene()
     this.setupSkybox()
-    this.scene.fog = new THREE.Fog(0x87c0ff, 30, 220)
+
+    this.scene.fog = new THREE.Fog(0x87c0ff, 30, 310)
     // Setup lighting
     this.setupLighting()
 
@@ -73,38 +74,36 @@ export class SceneManager {
    * Setup lights in the scene.
    */
   private setupLighting(): void {
-    // Ambient light — soft overall illumination
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+    // 🌤 very soft ambient (prevents black areas without flattening)
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.35)
     this.scene.add(this.ambientLight)
 
-    // Directional light — sunlight
-    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
-    this.directionalLight.position.set(10, 20, 10)
+    // 🌞 sun light (keep it simple)
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.7)
+    this.directionalLight.position.set(30, 80, 20)
+
     this.directionalLight.castShadow = true
 
-    // Configure shadow map for directional light
-    this.directionalLight.shadow.mapSize.width = 2048
-    this.directionalLight.shadow.mapSize.height = 2048
-    this.directionalLight.shadow.camera.near = 0.5
-    this.directionalLight.shadow.camera.far = 50
-    this.directionalLight.shadow.camera.left = -30
-    this.directionalLight.shadow.camera.right = 30
-    this.directionalLight.shadow.camera.top = 30
-    this.directionalLight.shadow.camera.bottom = -30
-    this.directionalLight.shadow.bias = -0.0001
+    // 📉 medium shadows (not too heavy)
+    this.directionalLight.shadow.mapSize.set(1024, 1024)
+
+    const d = 150
+    this.directionalLight.shadow.camera.left = -d
+    this.directionalLight.shadow.camera.right = d
+    this.directionalLight.shadow.camera.top = d
+    this.directionalLight.shadow.camera.bottom = -d
+
+    this.directionalLight.shadow.camera.near = 1
+    this.directionalLight.shadow.camera.far = 200
 
     this.scene.add(this.directionalLight)
-
-    // Add light helper (optional, for debugging)
-    // const helper = new THREE.DirectionalLightHelper(this.directionalLight);
-    // this.scene.add(helper);
   }
 
   /**
    * Setup fog (optional).
    * Uncomment in setupLighting() to enable.
    */
-  private setupFog(): void {
+  setupFog(): void {
     // Fog: objects fade to this color at distance
     this.fog = new THREE.Fog(0x87ceeb, 50, 100) // color, near, far
     this.scene.fog = this.fog

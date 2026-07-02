@@ -20,36 +20,36 @@
  * - Could be further optimized with LOD (level of detail) for large terrains
  */
 
-import * as THREE from 'three';
-import { GreenTerrain } from '../../domain/physics/GreenTerrain';
+import * as THREE from 'three'
+import { GreenTerrain } from '../../domain/physics/GreenTerrain'
 
 export class GreenRenderer {
   /**
    * The Three.js mesh representing the green.
    */
-  private mesh: THREE.Mesh;
+  private mesh: THREE.Mesh
 
   /**
    * Reference to terrain physics (for syncing if terrain changes).
    */
-  private terrain: GreenTerrain;
+  private terrain: GreenTerrain
 
   /**
    * Geometry that gets updated each frame if terrain changes.
    */
-  private geometry: THREE.BufferGeometry;
+  private geometry: THREE.BufferGeometry
 
   /**
    * Material for the green.
    * Could be changed for different effects (wet, dry, sand, etc.).
    */
-  private material: THREE.MeshPhongMaterial;
+  private material: THREE.MeshPhongMaterial
 
   constructor(terrain: GreenTerrain) {
-    this.terrain = terrain;
+    this.terrain = terrain
 
     // Create geometry from terrain height map
-    this.geometry = this.createGeometryFromTerrain();
+    this.geometry = this.createGeometryFromTerrain()
 
     // Create material — grass-like appearance
     this.material = new THREE.MeshPhongMaterial({
@@ -57,12 +57,12 @@ export class GreenRenderer {
       side: THREE.DoubleSide,
       flatShading: false, // Smooth shading looks better for grass
       wireframe: false, // Change to true for debugging
-    });
+    })
 
     // Create mesh
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
+    this.mesh = new THREE.Mesh(this.geometry, this.material)
+    this.mesh.castShadow = true
+    this.mesh.receiveShadow = true
   }
 
   /**
@@ -75,62 +75,61 @@ export class GreenRenderer {
    * 4. Set normals for proper lighting
    */
   private createGeometryFromTerrain(): THREE.BufferGeometry {
-    const geometry = new THREE.BufferGeometry();
+    const geometry = new THREE.BufferGeometry()
 
-    const heightMap = this.terrain.getHeightMap();
-    const resolution = this.terrain.getResolution();
-    const size = this.terrain.getSize();
-    const cellSize = size / resolution;
+    const resolution = this.terrain.getResolution()
+    const size = this.terrain.getSize()
+    const cellSize = size / resolution
 
     // --- STEP 1: Create vertices ---
     // One vertex for each grid point in the height map
-    const vertices: number[] = [];
-    const uvs: number[] = [];
+    const vertices: number[] = []
+    const uvs: number[] = []
 
     for (let i = 0; i < resolution; i++) {
       for (let j = 0; j < resolution; j++) {
         // World position
-        const x = (i - resolution / 2) * cellSize;
-        const z = (j - resolution / 2) * cellSize;
-        const y = heightMap[i + j * resolution];
+        const x = (i - resolution / 2) * cellSize
+        const z = (j - resolution / 2) * cellSize
+        const y = this.terrain.getHeightSample(i + j * resolution)
 
-        vertices.push(x, y, z);
+        vertices.push(x, y, z)
 
         // UV coordinates for texturing (future enhancement)
-        const u = i / (resolution - 1);
-        const v = j / (resolution - 1);
-        uvs.push(u, v);
+        const u = i / (resolution - 1)
+        const v = j / (resolution - 1)
+        uvs.push(u, v)
       }
     }
 
     // --- STEP 2: Create indices (faces) ---
     // Connect vertices into triangles
-    const indices: number[] = [];
+    const indices: number[] = []
 
     for (let i = 0; i < resolution - 1; i++) {
       for (let j = 0; j < resolution - 1; j++) {
         // Two triangles per grid cell
-        const a = i + j * resolution;
-        const b = i + 1 + j * resolution;
-        const c = i + (j + 1) * resolution;
-        const d = i + 1 + (j + 1) * resolution;
+        const a = i + j * resolution
+        const b = i + 1 + j * resolution
+        const c = i + (j + 1) * resolution
+        const d = i + 1 + (j + 1) * resolution
 
         // First triangle
-        indices.push(a, b, c);
+        indices.push(a, b, c)
         // Second triangle
-        indices.push(b, d, c);
+        indices.push(b, d, c)
       }
     }
 
     // --- STEP 3: Set geometry data ---
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
-    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3))
+    geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2))
+    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1))
 
     // Compute normals for proper lighting
-    geometry.computeVertexNormals();
+    geometry.computeVertexNormals()
 
-    return geometry;
+    return geometry
   }
 
   /**
@@ -138,7 +137,7 @@ export class GreenRenderer {
    * Called by SceneManager to add it to the scene.
    */
   getMesh(): THREE.Mesh {
-    return this.mesh;
+    return this.mesh
   }
 
   /**
@@ -147,28 +146,28 @@ export class GreenRenderer {
    */
   updateFromTerrain(): void {
     // Dispose old geometry
-    this.geometry.dispose();
+    this.geometry.dispose()
 
     // Create new geometry
-    this.geometry = this.createGeometryFromTerrain();
-    this.mesh.geometry = this.geometry;
+    this.geometry = this.createGeometryFromTerrain()
+    this.mesh.geometry = this.geometry
   }
 
   /**
    * Change the material (e.g., for different terrain types).
    */
   setMaterial(material: THREE.Material): void {
-    this.material.dispose();
-    this.material = material as THREE.MeshPhongMaterial;
-    this.mesh.material = this.material;
+    this.material.dispose()
+    this.material = material as THREE.MeshPhongMaterial
+    this.mesh.material = this.material
   }
 
   /**
    * Clean up resources.
    */
   dispose(): void {
-    this.geometry.dispose();
-    this.material.dispose();
-    this.mesh.geometry.dispose();
+    this.geometry.dispose()
+    this.material.dispose()
+    this.mesh.geometry.dispose()
   }
 }

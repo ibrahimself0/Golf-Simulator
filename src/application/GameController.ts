@@ -26,150 +26,179 @@
  * 3. Render the frame (Layer 4)
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three'
 
 // Layer 4: Rendering
-import { Renderer } from '../rendering/Renderer';
-import { SceneManager } from '../rendering/SceneManager';
-import { CameraSystem } from '../rendering/cameras/CameraSystem';
-import { GreenRenderer } from '../rendering/meshes/GreenRenderer';
-import { GolfSceneModels } from '../rendering/models/GolfSceneModels';
+import { Renderer } from '../rendering/Renderer'
+import { SceneManager } from '../rendering/SceneManager'
+import { CameraSystem } from '../rendering/cameras/CameraSystem'
+import { GreenRenderer } from '../rendering/meshes/GreenRenderer'
+import { CourseBoundaryRenderer } from '../rendering/meshes/CourseBoundaryRenderer'
+import { WaterHazardRenderer } from '../rendering/meshes/WaterHazardRenderer'
+import { GolfSceneModels } from '../rendering/models/GolfSceneModels'
 
 // Layer 3: Physics
-import { GreenTerrain } from '../domain/physics/GreenTerrain';
-import { BallPhysics } from '../domain/physics/BallPhysics';
-import { PhysicsEngine } from '../domain/physics/PhysicsEngine';
+import { GreenTerrain } from '../domain/physics/GreenTerrain'
+import { BallPhysics } from '../domain/physics/BallPhysics'
+import { PhysicsEngine } from '../domain/physics/PhysicsEngine'
 
 // Layer 2: Hit orchestration
-import { HitController } from './hit/HitController';
-import { HIT_STRENGTH_LEVELS } from './hit/HitStrengthLevels';
+import { HitController } from './hit/HitController'
+import { DEFAULT_SHOT_SETTINGS } from './hit/ShotSettings'
 
 // Layer 1: UI & Input
-import { FirstPersonCamera } from '../presentation/camera/FirstPersonCamera';
-import { InputHandler } from '../presentation/input/InputHandler';
+import { FirstPersonCamera } from '../presentation/camera/FirstPersonCamera'
+import { InputHandler } from '../presentation/input/InputHandler'
+import { SimulationPanels } from '../presentation/ui/SimulationPanels'
+import type { SimulationControlValues } from '../presentation/ui/SimulationPanels'
 
 // Shared
-import { Loop } from '../shared/core/Loop';
-import { Sizes } from '../shared/utils/Sizes';
+import { Loop } from '../shared/core/Loop'
+import { Sizes } from '../shared/utils/Sizes'
 
 /**
  * Current game state.
  * Used to coordinate between layers.
  */
 interface GameState {
-  ballPosition: THREE.Vector3;
-  ballVelocity: THREE.Vector3;
-  isBallMoving: boolean;
-  score: number;
-  currentHole: number;
+  ballPosition: THREE.Vector3
+  ballVelocity: THREE.Vector3
+  isBallMoving: boolean
+  score: number
+  currentHole: number
 }
 
 export class GameController {
   /**
    * Canvas element where rendering happens.
    */
-  private canvas: HTMLCanvasElement;
+  private canvas: HTMLCanvasElement
 
   /**
    * Tracks window size and provides resize events.
    */
-  private sizes: Sizes;
+  private sizes: Sizes
 
   /**
    * Main animation loop.
    */
-  private loop: Loop;
+  private loop: Loop
 
   /**
    * ========== LAYER 4: RENDERING ==========
    */
-  private renderer: Renderer;
-  private sceneManager: SceneManager;
-  private cameraSystem: CameraSystem;
-  private greenRenderer: GreenRenderer;
-  private golfModels: GolfSceneModels;
+  private renderer: Renderer
+  private sceneManager: SceneManager
+  private cameraSystem: CameraSystem
+  private greenRenderer: GreenRenderer
+  private waterHazardRenderer: WaterHazardRenderer
+  private courseBoundaryRenderer: CourseBoundaryRenderer
+  private golfModels: GolfSceneModels
 
   /**
    * ========== LAYER 3: PHYSICS ==========
    */
-  private greenTerrain: GreenTerrain;
-  private ballPhysics: BallPhysics;
-  private physicsEngine: PhysicsEngine;
+  private greenTerrain: GreenTerrain
+  private ballPhysics: BallPhysics
+  private physicsEngine: PhysicsEngine
 
   /**
    * ========== LAYER 1: UI & INPUT ==========
    */
-  private inputHandler: InputHandler;
-  private cameraController: FirstPersonCamera;
+  private inputHandler: InputHandler
+  private cameraController: FirstPersonCamera
+  private simulationPanels: SimulationPanels
 
   /**
    * ========== LAYER 2: STATE ==========
    */
-  private gameState: GameState;
-  private hitController: HitController;
+  private gameState: GameState
+  private hitController: HitController
+  private controlValues: SimulationControlValues
+  private simulationTime = 0
+  private isSimulationComplete = false
+  private previousVelocity = new THREE.Vector3()
+  private currentAcceleration = new THREE.Vector3()
 
   constructor(canvas: HTMLCanvasElement) {
-    this.canvas = canvas;
-    this.gameState = this.createInitialGameState();
+    this.canvas = canvas
+
+    this.gameState = this.createInitialGameState()
 
     // Initialize sizes (used by multiple systems)
-    this.sizes = new Sizes();
+    this.sizes = new Sizes()
 
     // ========== INITIALIZE LAYER 3: PHYSICS ==========
-    console.log('🏌️ Initializing physics...');
-    this.greenTerrain = new GreenTerrain();
+    console.log('🏌️ Initializing physics...')
+    this.greenTerrain = new GreenTerrain()
     this.ballPhysics = new BallPhysics(
       'ball',
       new THREE.Vector3(0, 0.2, 0), // Start at (0, height, 0)
-      this.greenTerrain,
-    );
-    this.physicsEngine = new PhysicsEngine(this.greenTerrain);
-    this.physicsEngine.addObject(this.ballPhysics);
+      this.greenTerrain
+    )
+    this.physicsEngine = new PhysicsEngine(this.greenTerrain)
+    this.physicsEngine.addObject(this.ballPhysics)
 
     // ========== INITIALIZE LAYER 1: INPUT & CAMERA ==========
-    console.log('🎮 Initializing input...');
-    this.inputHandler = new InputHandler(this.canvas);
-    this.cameraController = new FirstPersonCamera(this.inputHandler);
+    console.log('🎮 Initializing input...')
+    this.inputHandler = new InputHandler(this.canvas)
+    this.cameraController = new FirstPersonCamera(this.inputHandler)
 
     // ========== INITIALIZE LAYER 4: RENDERING ==========
-    console.log('🎨 Initializing rendering...');
-    this.renderer = new Renderer(canvas, this.sizes);
-    this.sceneManager = new SceneManager();
+    console.log('🎨 Initializing rendering...')
+    this.renderer = new Renderer(canvas, this.sizes)
+    this.sceneManager = new SceneManager()
 
     // Create terrain mesh from physics data
-    this.greenRenderer = new GreenRenderer(this.greenTerrain);
-    this.sceneManager.add(this.greenRenderer.getMesh());
+    this.greenRenderer = new GreenRenderer(this.greenTerrain)
+    this.sceneManager.add(this.greenRenderer.getMesh())
+
+    this.waterHazardRenderer = new WaterHazardRenderer(this.greenTerrain)
+    this.sceneManager.add(this.waterHazardRenderer.getObject3D())
+
+    this.courseBoundaryRenderer = new CourseBoundaryRenderer(this.greenTerrain)
+    this.sceneManager.add(this.courseBoundaryRenderer.getObject3D())
+    this.ballPhysics.setBoundaryHalfSize(this.courseBoundaryRenderer.getPhysicsHalfSize())
 
     // Models own their placeholders and can later accept loaded GLTF scenes.
-    this.golfModels = new GolfSceneModels(this.greenTerrain, this.ballPhysics.getRadius());
-    this.sceneManager.add(this.golfModels.getObject3D());
+    this.golfModels = new GolfSceneModels(this.greenTerrain, this.ballPhysics.getRadius())
+    this.sceneManager.add(this.golfModels.getObject3D())
+
+    this.controlValues = this.createInitialControlValues()
 
     // Application-layer bridge between input, physics and the club visual.
     this.hitController = new HitController(
       this.physicsEngine,
       this.ballPhysics,
       this.golfModels.club.getObject3D(),
-      HIT_STRENGTH_LEVELS,
-    );
-    this.setupInputHandlers();
+      this.controlValues
+    )
+
+    this.simulationPanels = new SimulationPanels({
+      controls: this.controlValues,
+      onControlsChange: (controls) => this.applyControlValues(controls),
+    })
+    this.applyControlValues(this.controlValues)
+
+    this.setupInputHandlers()
 
     // Setup camera
     this.cameraSystem = new CameraSystem(
       this.sizes.width / this.sizes.height,
-      this.cameraController,
-    );
+      this.cameraController
+    )
 
     // ========== INITIALIZE GAME LOOP ==========
-    console.log('▶️ Starting game loop...');
-    this.loop = new Loop();
-    this.loop.onTick((deltaTime) => this.update(deltaTime));
-    this.loop.start();
+    console.log('▶️ Starting game loop...')
+    this.loop = new Loop()
+    this.loop.onTick((deltaTime) => this.update(deltaTime))
+    this.loop.start()
 
     // Handle window resize
-    this.sizes.onResize(() => this.onResize());
+    this.sizes.onResize(() => this.onResize())
 
-    console.log('✅ Game initialized!');
-    console.log('Hit controls: H = hit, 1-3 = strength, [ / ] = previous / next level');
+    console.log('✅ Game initialized!')
+    console.log('Hit controls: H = hit, R = reset, right panel = physics controls')
   }
 
   /**
@@ -182,7 +211,7 @@ export class GameController {
       isBallMoving: false,
       score: 0,
       currentHole: 1,
-    };
+    }
   }
 
   /**
@@ -191,28 +220,17 @@ export class GameController {
    */
   private setupInputHandlers(): void {
     this.inputHandler.onPointerLockChange((isLocked) => {
-      document.body.classList.toggle('camera-locked', isLocked);
-    });
+      document.body.classList.toggle('camera-locked', isLocked)
+    })
 
     this.inputHandler.onKeyDown((key) => {
       if (key === 'h' || key === 'H') {
-        this.performHit();
+        this.performHit()
       }
       if (key === 'r' || key === 'R') {
-        this.resetBall();
+        this.resetSimulation()
       }
-      if (this.hitController.selectLevelFromNumberKey(key)) {
-        this.logSelectedHitLevel();
-      }
-      if (key === '[') {
-        this.hitController.selectPreviousLevel();
-        this.logSelectedHitLevel();
-      }
-      if (key === ']') {
-        this.hitController.selectNextLevel();
-        this.logSelectedHitLevel();
-      }
-    });
+    })
   }
 
   /**
@@ -221,32 +239,229 @@ export class GameController {
    * Bridges Layer 1 (input) → Layer 2 (command) → Layer 3 (physics).
    */
   private performHit(): void {
+    if (this.isSimulationComplete) {
+      return
+    }
+
     const aimDirection = this.golfModels.hole
       .getObject3D()
       .getWorldPosition(new THREE.Vector3())
-      .sub(this.ballPhysics.getPosition());
-    const result = this.hitController.hit(aimDirection);
+      .sub(this.ballPhysics.getPosition())
+    const result = this.hitController.hit(aimDirection)
 
     if (result?.didHit) {
-      this.gameState.isBallMoving = true;
-      this.gameState.score += 1;
+      this.gameState.isBallMoving = true
+      this.gameState.score += 1
     }
   }
 
-  private logSelectedHitLevel(): void {
-    const level = this.hitController.getSelectedLevel();
-    console.log(`Hit strength: ${level.name} (${level.clubHeadSpeed} m/s club speed)`);
+  private createInitialControlValues(): SimulationControlValues {
+    const ballConfig = this.ballPhysics.getConfig()
+    const terrainConfig = this.greenTerrain.getConfig()
+
+    return {
+      ...DEFAULT_SHOT_SETTINGS,
+      ballMass: ballConfig.mass,
+      ballRadius: ballConfig.radius,
+      gravity: ballConfig.gravity,
+      airDensity: ballConfig.airDensity,
+      dragCoefficient: ballConfig.dragCoefficient,
+      magnusCoefficient: ballConfig.magnusCoefficient,
+      maximumLiftCoefficient: ballConfig.maximumLiftCoefficient,
+      bounce: ballConfig.restitution,
+      impactFriction: ballConfig.impactFriction,
+      slidingFriction: ballConfig.slidingFriction,
+      rollingResistance: ballConfig.rollingResistance,
+      slopeStrength: ballConfig.slopeStrength,
+      stopSpeed: ballConfig.stopSpeed,
+      bounceSpeed: ballConfig.bounceSpeed,
+      terrainRoughness: terrainConfig.roughness,
+      terrainSeed: terrainConfig.seed,
+      windStrength: ballConfig.windVelocity.length(),
+      windDirectionDegrees: 0,
+      timeScale: 1,
+      maximumDeltaTime: ballConfig.maximumDeltaTime,
+      simulationStep: ballConfig.simulationStep,
+    }
+  }
+
+  private applyControlValues(controls: SimulationControlValues): void {
+    const previousRadius = this.controlValues.ballRadius
+    const previousTerrainRoughness = this.controlValues.terrainRoughness
+    const previousTerrainSeed = this.controlValues.terrainSeed
+    this.controlValues = { ...controls }
+
+    this.hitController.setSettings({
+      hitPower: controls.hitPower,
+      minClubHeadSpeed: controls.minClubHeadSpeed,
+      maxClubHeadSpeed: controls.maxClubHeadSpeed,
+      launchAngleDegrees: controls.launchAngleDegrees,
+      directionDegrees: controls.directionDegrees,
+      spinPercent: controls.spinPercent,
+      sideSpinPercent: controls.sideSpinPercent,
+      effectiveClubMass: controls.effectiveClubMass,
+      restitution: controls.restitution,
+      friction: controls.friction,
+    })
+
+    this.ballPhysics.updateConfig({
+      mass: controls.ballMass,
+      radius: controls.ballRadius,
+      gravity: controls.gravity,
+      airDensity: controls.airDensity,
+      dragCoefficient: controls.dragCoefficient,
+      magnusCoefficient: controls.magnusCoefficient,
+      maximumLiftCoefficient: controls.maximumLiftCoefficient,
+      restitution: controls.bounce,
+      impactFriction: controls.impactFriction,
+      slidingFriction: controls.slidingFriction,
+      rollingResistance: controls.rollingResistance,
+      slopeStrength: controls.slopeStrength,
+      stopSpeed: controls.stopSpeed,
+      bounceSpeed: controls.bounceSpeed,
+      maximumDeltaTime: controls.maximumDeltaTime,
+      simulationStep: controls.simulationStep,
+      windVelocity: this.createWindVelocity(controls.windStrength, controls.windDirectionDegrees),
+    })
+
+    if (controls.terrainSeed !== previousTerrainSeed) {
+      this.regenerateCourse(controls.terrainSeed, controls.terrainRoughness)
+    } else if (controls.terrainRoughness !== previousTerrainRoughness) {
+      this.greenTerrain.setRoughness(controls.terrainRoughness)
+      this.refreshCourseFromTerrain()
+      this.ballPhysics.alignToTerrain()
+    }
+
+    if (controls.ballRadius !== previousRadius) {
+      this.golfModels.setBallPhysicalRadius(controls.ballRadius)
+      this.ballPhysics.alignToTerrain()
+    }
+  }
+
+  private regenerateCourse(seed: number, terrainRoughness: number): void {
+    this.greenTerrain.setRoughness(terrainRoughness)
+    this.greenTerrain.regenerate(seed)
+    this.refreshCourseFromTerrain()
+    this.resetSimulation()
+    this.simulationPanels.showStatusMessage(`Course regenerated with seed ${Math.trunc(seed)}.`)
+  }
+
+  private refreshCourseFromTerrain(): void {
+    this.greenRenderer.updateFromTerrain()
+    this.waterHazardRenderer.updateFromTerrain()
+    this.courseBoundaryRenderer.updateFromTerrain()
+    this.ballPhysics.setBoundaryHalfSize(this.courseBoundaryRenderer.getPhysicsHalfSize())
+    this.golfModels.refreshForTerrain()
+  }
+
+  private createWindVelocity(strength: number, directionDegrees: number): THREE.Vector3 {
+    const direction = THREE.MathUtils.degToRad(directionDegrees)
+    return new THREE.Vector3(Math.sin(direction) * strength, 0, Math.cos(direction) * strength)
+  }
+
+  private handleWaterHazard(): boolean {
+    if (this.isSimulationComplete) {
+      return false
+    }
+
+    const ballPosition = this.ballPhysics.getPosition()
+    if (!this.greenTerrain.isWaterAt(ballPosition.x, ballPosition.z)) {
+      return false
+    }
+
+    const dropPosition = this.greenTerrain.getNearestLandPosition(
+      ballPosition.x,
+      ballPosition.z,
+      this.ballPhysics.getRadius()
+    )
+
+    this.gameState.score += 1
+    this.ballPhysics.setPosition(dropPosition)
+    this.ballPhysics.reset()
+    this.hitController.reset()
+    this.gameState.ballPosition.copy(dropPosition)
+    this.gameState.ballVelocity.set(0, 0, 0)
+    this.gameState.isBallMoving = false
+    this.currentAcceleration.set(0, 0, 0)
+    this.previousVelocity.set(0, 0, 0)
+    this.golfModels.syncBall(this.ballPhysics.getPosition(), this.ballPhysics.getRotation())
+    this.simulationPanels.showStatusMessage(
+      'Water hazard — penalty stroke. Dropped at nearest land.'
+    )
+
+    return true
+  }
+
+  private getDistanceToHole(): number {
+    return this.golfModels.hole
+      .getObject3D()
+      .getWorldPosition(new THREE.Vector3())
+      .distanceTo(this.ballPhysics.getPosition())
+  }
+
+  private getHeightAboveTerrain(): number {
+    const ballPosition = this.ballPhysics.getPosition()
+    const terrainHeight = this.greenTerrain.getHeightAt(ballPosition.x, ballPosition.z)
+    return ballPosition.y - terrainHeight
+  }
+
+  private canHit(): boolean {
+    return !this.isSimulationComplete && this.ballPhysics.canBeHit()
+  }
+
+  private checkHoleCompletion(): void {
+    if (this.isSimulationComplete) {
+      return
+    }
+
+    const ballPosition = this.ballPhysics.getPosition()
+    const holePosition = this.golfModels.hole.getObject3D().getWorldPosition(new THREE.Vector3())
+    const horizontalDistance = Math.hypot(
+      ballPosition.x - holePosition.x,
+      ballPosition.z - holePosition.z
+    )
+    const captureRadius = Math.max(0.65, this.ballPhysics.getRadius() * 11)
+    const ballIsLowEnough = this.getHeightAboveTerrain() <= this.ballPhysics.getRadius() * 3
+
+    if (horizontalDistance > captureRadius || !ballIsLowEnough) {
+      return
+    }
+
+    const finalPosition = holePosition.clone()
+    finalPosition.y =
+      this.greenTerrain.getHeightAt(finalPosition.x, finalPosition.z) + this.ballPhysics.getRadius()
+
+    this.ballPhysics.setPosition(finalPosition)
+    this.ballPhysics.reset()
+    this.gameState.ballPosition.copy(finalPosition)
+    this.gameState.ballVelocity.set(0, 0, 0)
+    this.gameState.isBallMoving = false
+    this.isSimulationComplete = true
+    this.currentAcceleration.set(0, 0, 0)
+    this.previousVelocity.set(0, 0, 0)
+    this.golfModels.syncBall(this.ballPhysics.getPosition(), this.ballPhysics.getRotation())
+    this.simulationPanels.showCompletionMessage(this.gameState.score)
   }
 
   /**
    * Reset ball position.
    */
-  private resetBall(): void {
-    this.ballPhysics.setPosition(new THREE.Vector3(0, 0, 0));
-    this.ballPhysics.reset();
-    this.hitController.reset();
-    this.gameState.isBallMoving = false;
-    this.gameState.score = 0;
+  private resetSimulation(): void {
+    const startPoint = this.greenTerrain.getStartPosition()
+    this.ballPhysics.setPosition(new THREE.Vector3(startPoint.x, 0, startPoint.y))
+    this.ballPhysics.reset()
+    this.hitController.reset()
+    this.gameState.isBallMoving = false
+    this.gameState.score = 0
+    this.isSimulationComplete = false
+    this.simulationPanels.hideCompletionMessage()
+    this.simulationTime = 0
+    this.previousVelocity.set(0, 0, 0)
+    this.currentAcceleration.set(0, 0, 0)
+    const plane = this.golfModels.getPlane()
+    if (plane) {
+      plane.position.z = -100
+    }
   }
 
   /**
@@ -262,31 +477,63 @@ export class GameController {
    */
   private update(deltaTime: number): void {
     // === LAYER 3: UPDATE PHYSICS ===
-    this.physicsEngine.update(deltaTime);
-    this.hitController.update(deltaTime);
+    const scaledDeltaTime = this.isSimulationComplete ? 0 : deltaTime * this.controlValues.timeScale
+    this.simulationTime += scaledDeltaTime
+    if (!this.isSimulationComplete) {
+      this.physicsEngine.update(scaledDeltaTime)
+      if (!this.handleWaterHazard()) {
+        this.checkHoleCompletion()
+      }
+    }
+    this.hitController.update(deltaTime)
+    const plane = this.golfModels.getPlane()
 
+    if (plane) {
+      plane.position.z -= 0.2
+    }
     // === LAYER 2: UPDATE GAME STATE ===
-    this.gameState.ballPosition.copy(this.ballPhysics.getPosition());
-    this.gameState.ballVelocity.copy(this.ballPhysics.getVelocity());
-    this.gameState.isBallMoving = this.ballPhysics.isActive();
+    this.gameState.ballPosition.copy(this.ballPhysics.getPosition())
+    this.gameState.ballVelocity.copy(this.ballPhysics.getVelocity())
+    this.gameState.isBallMoving = this.ballPhysics.isActive()
+    if (scaledDeltaTime > 0 && this.gameState.isBallMoving) {
+      this.currentAcceleration
+        .copy(this.gameState.ballVelocity)
+        .sub(this.previousVelocity)
+        .divideScalar(scaledDeltaTime)
+      this.previousVelocity.copy(this.gameState.ballVelocity)
+    } else {
+      this.currentAcceleration.set(0, 0, 0)
+      this.previousVelocity.copy(this.gameState.ballVelocity)
+    }
+
+    this.simulationPanels.update({
+      position: this.gameState.ballPosition,
+      velocity: this.gameState.ballVelocity,
+      acceleration: this.currentAcceleration,
+      angularVelocity: this.ballPhysics.getAngularVelocity(),
+      motionState: this.ballPhysics.getMotionState(),
+      isActive: this.gameState.isBallMoving,
+      canHit: this.canHit(),
+      score: this.gameState.score,
+      currentHole: this.gameState.currentHole,
+      distanceToHole: this.getDistanceToHole(),
+      heightAboveTerrain: this.getHeightAboveTerrain(),
+      simulationTime: this.simulationTime,
+      clubHeadSpeed: this.hitController.getClubHeadSpeed(),
+      controls: this.controlValues,
+    })
 
     // The spectator camera updates only from input, never from physics state.
-    this.cameraController.update(deltaTime);
+    this.cameraController.update(deltaTime)
 
     // === LAYER 4: SYNC RENDERING ===
-    this.golfModels.syncBall(
-      this.gameState.ballPosition,
-      this.ballPhysics.getRotation(),
-    );
+    this.golfModels.syncBall(this.gameState.ballPosition, this.ballPhysics.getRotation())
 
     // Update camera in the Three.js scene
-    this.cameraSystem.update(
-      this.cameraController.getPosition(),
-      this.cameraController.getTarget(),
-    );
+    this.cameraSystem.update(this.cameraController.getPosition(), this.cameraController.getTarget())
 
     // === RENDER FRAME ===
-    this.renderer.render(this.sceneManager.getScene(), this.cameraSystem.getCamera());
+    this.renderer.render(this.sceneManager.getScene(), this.cameraSystem.getCamera())
   }
 
   /**
@@ -294,22 +541,25 @@ export class GameController {
    */
   private onResize(): void {
     // Notify all systems that size changed
-    this.cameraSystem.updateAspect(this.sizes.width / this.sizes.height);
-    this.renderer.updateSize(this.sizes);
+    this.cameraSystem.updateAspect(this.sizes.width / this.sizes.height)
+    this.renderer.updateSize(this.sizes)
   }
 
   /**
    * Cleanup when closing the app.
    */
   dispose(): void {
-    console.log('🧹 Cleaning up...');
-    this.loop.dispose();
-    this.cameraController.dispose();
-    this.inputHandler.dispose();
-    document.body.classList.remove('camera-locked');
-    this.golfModels.dispose();
-    this.greenRenderer.dispose();
-    this.renderer.dispose();
-    this.sizes.dispose();
+    console.log('🧹 Cleaning up...')
+    this.loop.dispose()
+    this.cameraController.dispose()
+    this.inputHandler.dispose()
+    this.simulationPanels.dispose()
+    document.body.classList.remove('camera-locked')
+    this.golfModels.dispose()
+    this.courseBoundaryRenderer.dispose()
+    this.waterHazardRenderer.dispose()
+    this.greenRenderer.dispose()
+    this.renderer.dispose()
+    this.sizes.dispose()
   }
 }

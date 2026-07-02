@@ -112,7 +112,7 @@ export abstract class BaseCamera {
    *
    * @param event - Input event (key pressed, mouse moved, etc.)
    */
-  onInput(event: KeyboardEvent | MouseEvent | any): void {
+  onInput(_event: KeyboardEvent | MouseEvent | any): void {
     // Default: do nothing. Subclasses override.
   }
 
