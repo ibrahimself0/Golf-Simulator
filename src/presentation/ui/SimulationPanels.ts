@@ -24,6 +24,7 @@ export interface SimulationControlValues extends ShotSettings {
   timeScale: number
   maximumDeltaTime: number
   simulationStep: number
+  showTrajectoryPreview: boolean
 }
 
 interface RuntimePanelState {
@@ -40,6 +41,7 @@ interface RuntimePanelState {
   heightAboveTerrain: number
   simulationTime: number
   clubHeadSpeed: number
+  fps: number
   controls: Readonly<SimulationControlValues>
 }
 
@@ -48,7 +50,7 @@ interface SimulationPanelsOptions {
   onControlsChange: (controls: SimulationControlValues) => void
 }
 
-interface ControlDescriptor {
+interface NumericControlDescriptor {
   key: keyof SimulationControlValues
   label: string
   min: number
@@ -56,7 +58,16 @@ interface ControlDescriptor {
   step: number
   unit?: string
   inputType?: 'slider' | 'number'
+  valueType?: 'number'
 }
+
+interface BooleanControlDescriptor {
+  key: keyof SimulationControlValues
+  label: string
+  valueType: 'boolean'
+}
+
+type ControlDescriptor = NumericControlDescriptor | BooleanControlDescriptor
 
 const CONTROL_SECTIONS: Array<{
   title: string
@@ -66,6 +77,7 @@ const CONTROL_SECTIONS: Array<{
     title: 'Course',
     controls: [
       { key: 'terrainSeed', label: 'Seed', min: 0, max: 9999, step: 1, inputType: 'number' },
+      { key: 'showTrajectoryPreview', label: 'Show trace', valueType: 'boolean' },
     ],
   },
   {
@@ -75,7 +87,7 @@ const CONTROL_SECTIONS: Array<{
       { key: 'minClubHeadSpeed', label: 'Min speed', min: 0, max: 20, step: 0.1, unit: 'm/s' },
       { key: 'maxClubHeadSpeed', label: 'Max speed', min: 5, max: 60, step: 0.1, unit: 'm/s' },
       { key: 'launchAngleDegrees', label: 'Launch angle', min: 0, max: 45, step: 0.5, unit: '°' },
-      { key: 'directionDegrees', label: 'Direction', min: 0, max: 360, step: 1, unit: '°' },
+      { key: 'directionDegrees', label: 'Direction', min: 0, max: 360, step: 0.1, unit: '°' },
       { key: 'spinPercent', label: 'Spin', min: -100, max: 100, step: 1, unit: '%' },
       { key: 'sideSpinPercent', label: 'Side spin', min: -100, max: 100, step: 1, unit: '%' },
       { key: 'effectiveClubMass', label: 'Club mass', min: 0.05, max: 1, step: 0.01, unit: 'kg' },
@@ -145,7 +157,7 @@ export class SimulationPanels {
   private readonly onControlsChange: (controls: SimulationControlValues) => void
   private readonly controlsByKey = new Map<
     keyof SimulationControlValues,
-    { range?: HTMLInputElement; number: HTMLInputElement; descriptor: ControlDescriptor }
+    { range?: HTMLInputElement; number?: HTMLInputElement; checkbox?: HTMLInputElement; descriptor: ControlDescriptor }
   >()
   private controls: SimulationControlValues
   private statusMessageTimeout: number | null = null
@@ -181,6 +193,8 @@ export class SimulationPanels {
 
     this.runtimeBody.innerHTML = ''
     this.runtimeBody.append(
+      this.createSection('Performance'),
+      this.createRow('FPS', this.formatNumber(state.fps, 0)),
       this.createSection('Ball'),
       this.createRow('State', state.motionState),
       this.createRow('Active', state.isActive ? 'true' : 'false'),
@@ -219,7 +233,7 @@ export class SimulationPanels {
       this.statusMessageTimeout = null
     }
     const strokeLabel = strokes === 1 ? 'stroke' : 'strokes'
-    this.completionPopup.textContent = `Ball reached the hole — scored in ${strokes} ${strokeLabel}. Press R to reset.`
+    this.completionPopup.textContent = `Scored in ${strokes} ${strokeLabel}!`
     this.completionPopup.hidden = false
   }
 
@@ -304,6 +318,23 @@ export class SimulationPanels {
     label.className = 'sim-panel__control-label'
     label.textContent = descriptor.label
 
+    if (descriptor.valueType === 'boolean') {
+      const inputs = document.createElement('span')
+      inputs.className = 'sim-panel__control-inputs sim-panel__control-inputs--checkbox'
+
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.checked = Boolean(this.controls[descriptor.key])
+      checkbox.addEventListener('change', () => {
+        this.setBooleanControlValue(descriptor, checkbox.checked)
+      })
+
+      inputs.append(checkbox)
+      row.append(label, inputs)
+      this.controlsByKey.set(descriptor.key, { checkbox, descriptor })
+      return row
+    }
+
     const inputs = document.createElement('span')
     inputs.className =
       descriptor.inputType === 'number'
@@ -324,7 +355,7 @@ export class SimulationPanels {
     number.min = String(descriptor.min)
     number.max = String(descriptor.max)
     number.step = String(descriptor.step)
-    number.value = this.formatControlValue(this.controls[descriptor.key], descriptor)
+    number.value = this.formatControlValue(Number(this.controls[descriptor.key]), descriptor)
 
     const unit = document.createElement('span')
     unit.className = 'sim-panel__unit'
@@ -349,22 +380,33 @@ export class SimulationPanels {
     return row
   }
 
-  private setControlValue(descriptor: ControlDescriptor, rawValue: number): void {
+  private setControlValue(descriptor: NumericControlDescriptor, rawValue: number): void {
     if (!Number.isFinite(rawValue)) {
       return
     }
 
     const value = THREE.MathUtils.clamp(rawValue, descriptor.min, descriptor.max)
-    this.controls[descriptor.key] = value
+    ;(this.controls as unknown as Record<string, number>)[String(descriptor.key)] = value
 
     const pair = this.controlsByKey.get(descriptor.key)
     if (pair) {
       if (pair.range) {
         pair.range.value = String(value)
       }
-      pair.number.value = this.formatControlValue(value, descriptor)
+      if (pair.number) {
+        pair.number.value = this.formatControlValue(value, descriptor)
+      }
     }
 
+    this.onControlsChange({ ...this.controls })
+  }
+
+  private setBooleanControlValue(descriptor: BooleanControlDescriptor, value: boolean): void {
+    ;(this.controls as unknown as Record<string, boolean>)[String(descriptor.key)] = value
+    const pair = this.controlsByKey.get(descriptor.key)
+    if (pair?.checkbox) {
+      pair.checkbox.checked = value
+    }
     this.onControlsChange({ ...this.controls })
   }
 
@@ -398,7 +440,7 @@ export class SimulationPanels {
     )}, ${this.formatNumber(vector.z, fractionDigits)}`
   }
 
-  private formatControlValue(value: number, descriptor: ControlDescriptor): string {
+  private formatControlValue(value: number, descriptor: NumericControlDescriptor): string {
     return this.formatNumber(value, this.getStepFractionDigits(descriptor.step))
   }
 

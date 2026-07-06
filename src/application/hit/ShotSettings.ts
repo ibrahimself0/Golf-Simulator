@@ -9,6 +9,7 @@ export interface ShotSettings {
   effectiveClubMass: number
   restitution: number
   friction: number
+  showTrajectoryPreview: boolean
 }
 
 export const DEFAULT_SHOT_SETTINGS: Readonly<ShotSettings> = {
@@ -22,4 +23,5 @@ export const DEFAULT_SHOT_SETTINGS: Readonly<ShotSettings> = {
   effectiveClubMass: 0.2,
   restitution: 0.76,
   friction: 0.2,
+  showTrajectoryPreview: false,
 }

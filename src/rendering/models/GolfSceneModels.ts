@@ -36,7 +36,6 @@ export class GolfSceneModels {
 
     this.root.add(this.ball.getObject3D(), this.club.getObject3D(), this.hole.getObject3D())
     this.placeCourseObjects()
-    this.loadCharacter()
     this.loadDistantScenery()
     this.loadPlane()
     this.loadTreeModels()
@@ -56,13 +55,7 @@ export class GolfSceneModels {
       startPoint.y
     )
     this.ball.sync(start, new THREE.Euler())
-    this.club.place(
-      new THREE.Vector3(
-        startPoint.x + 0.34,
-        this.terrain.getHeightAt(startPoint.x + 0.34, startPoint.y + 0.25),
-        startPoint.y + 0.25
-      )
-    )
+    this.club.place(new THREE.Vector3(startPoint.x + 0.34, this.terrain.getHeightAt(startPoint.x + 0.34, startPoint.y + 0.25), startPoint.y + 0.25))
 
     const holePoint = this.terrain.getHolePosition()
     this.hole.place(
@@ -72,16 +65,6 @@ export class GolfSceneModels {
         holePoint.y
       )
     )
-  }
-
-  private loadCharacter(): void {
-    this.loader.load('/models/character-male-d.glb', (gltf) => {
-      const character = gltf.scene
-      character.position.set(1.5, this.terrain.getHeightAt(1.5, 1), 1)
-      character.rotation.set(0, 3.1, 0)
-      character.scale.set(3, 3, 3)
-      this.root.add(character)
-    })
   }
 
   private loadDistantScenery(): void {
@@ -168,6 +151,20 @@ export class GolfSceneModels {
       this.root.remove(tree)
     }
     this.proceduralTrees.length = 0
+  }
+
+  syncGolfer(ballPosition: THREE.Vector3, shotDirection: THREE.Vector3): void {
+    const forward = new THREE.Vector3(shotDirection.x, 0, shotDirection.z)
+    if (forward.lengthSq() === 0) {
+      return
+    }
+
+    forward.normalize()
+    this.club.placeForShot(
+      ballPosition,
+      this.terrain.getHeightAt(ballPosition.x, ballPosition.z),
+      forward
+    )
   }
 
   syncBall(position: THREE.Vector3, rotation: THREE.Euler): void {

@@ -87,7 +87,7 @@ export class SceneManager {
     // 📉 medium shadows (not too heavy)
     this.directionalLight.shadow.mapSize.set(1024, 1024)
 
-    const d = 150
+    const d = 250
     this.directionalLight.shadow.camera.left = -d
     this.directionalLight.shadow.camera.right = d
     this.directionalLight.shadow.camera.top = d

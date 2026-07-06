@@ -11,7 +11,6 @@ export class HitController {
   private readonly ball: BallPhysics
   private readonly clubObject: THREE.Object3D
   private settings: ShotSettings
-  private readonly restRotation: THREE.Euler
   private animationTime = 0
   private isAnimating = false
   private readonly animationDuration = 0.28
@@ -26,7 +25,6 @@ export class HitController {
     this.ball = ball
     this.clubObject = clubObject
     this.settings = { ...initialSettings }
-    this.restRotation = clubObject.rotation.clone()
   }
 
   hit(aimDirection: THREE.Vector3): ClubImpactResult | null {
@@ -34,16 +32,10 @@ export class HitController {
       return null
     }
 
-    const horizontalAim = new THREE.Vector3(aimDirection.x, 0, aimDirection.z)
+    const horizontalAim = this.getShotDirection(aimDirection)
     if (horizontalAim.lengthSq() === 0) {
       return null
     }
-
-    horizontalAim.normalize()
-    horizontalAim.applyAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      THREE.MathUtils.degToRad(this.settings.directionDegrees)
-    )
 
     const result = this.physicsEngine.hitBall(this.ball, {
       clubHeadVelocity: horizontalAim.clone().multiplyScalar(this.getClubHeadSpeed()),
@@ -67,19 +59,41 @@ export class HitController {
   }
 
   update(deltaTime: number): void {
+    const baseBackswing = -0.42
+
     if (!this.isAnimating) {
+      this.clubObject.rotation.x = baseBackswing
       return
     }
 
     this.animationTime += Math.max(0, deltaTime)
     const progress = Math.min(this.animationTime / this.animationDuration, 1)
-    this.clubObject.rotation.copy(this.restRotation)
-    this.clubObject.rotation.z += Math.sin(progress * Math.PI) * 0.9
+
+    // A proper swing has a small backswing, a fast downswing through the ball,
+    // and a follow-through. Smoothstep/ease curves make it feel less robotic.
+    const eased = progress < 0.34
+      ? -0.42 - THREE.MathUtils.smoothstep(progress / 0.34, 0, 1) * 0.55
+      : -0.97 + THREE.MathUtils.smoothstep((progress - 0.34) / 0.66, 0, 1) * 1.95
+    this.clubObject.rotation.x = eased
 
     if (progress >= 1) {
       this.isAnimating = false
-      this.clubObject.rotation.copy(this.restRotation)
+      this.clubObject.rotation.x = baseBackswing
     }
+  }
+
+  getShotDirection(aimDirection: THREE.Vector3): THREE.Vector3 {
+    const horizontalAim = new THREE.Vector3(aimDirection.x, 0, aimDirection.z)
+    if (horizontalAim.lengthSq() === 0) {
+      return new THREE.Vector3()
+    }
+
+    return horizontalAim
+      .normalize()
+      .applyAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        THREE.MathUtils.degToRad(this.settings.directionDegrees)
+      )
   }
 
   setSettings(settings: Partial<ShotSettings>): void {
@@ -105,7 +119,7 @@ export class HitController {
   reset(): void {
     this.animationTime = 0
     this.isAnimating = false
-    this.clubObject.rotation.copy(this.restRotation)
+    this.clubObject.rotation.x = -0.42
   }
 
   private clampSettings(): void {
@@ -123,5 +137,6 @@ export class HitController {
     this.settings.effectiveClubMass = Math.max(0.01, this.settings.effectiveClubMass)
     this.settings.restitution = THREE.MathUtils.clamp(this.settings.restitution, 0, 1)
     this.settings.friction = Math.max(0, this.settings.friction)
+    this.settings.showTrajectoryPreview = Boolean(this.settings.showTrajectoryPreview)
   }
 }

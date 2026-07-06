@@ -36,6 +36,25 @@ export class ClubModel extends BaseVisualModel {
 
   place(position: THREE.Vector3): void {
     this.root.position.copy(position)
-    this.root.rotation.set(0.08, 0.2, -0.28)
+    this.root.rotation.set(-0.42, 0.2, -0.22)
+  }
+
+  placeForShot(ballPosition: THREE.Vector3, terrainHeight: number, shotDirection: THREE.Vector3): void {
+    const forward = new THREE.Vector3(shotDirection.x, 0, shotDirection.z)
+    if (forward.lengthSq() === 0) {
+      return
+    }
+
+    forward.normalize()
+    const right = new THREE.Vector3(forward.z, 0, -forward.x)
+    const position = ballPosition
+      .clone()
+      .addScaledVector(forward, -0.34)
+      .addScaledVector(right, 0.42)
+    position.y = terrainHeight + 0.03
+
+    this.root.position.copy(position)
+    this.root.rotation.y = Math.atan2(forward.x, forward.z) + Math.PI * 0.5
+    this.root.rotation.z = -0.24
   }
 }

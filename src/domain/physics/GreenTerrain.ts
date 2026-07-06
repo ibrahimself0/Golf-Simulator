@@ -63,7 +63,7 @@ const DEFAULT_COURSE_HOLE = new THREE.Vector2(0, -64)
 const START_PATCH_HEIGHT = 0.28
 const HOLE_PATCH_HEIGHT = 0.36
 const FLAG_OFFSET = new THREE.Vector2(0.72, 0.18)
-const FLAG_COLLIDER_RADIUS = 0.16
+const FLAG_COLLIDER_RADIUS = 0.055
 const FLAG_COLLIDER_HEIGHT = 2.8
 
 const DEFAULT_TERRAIN: Readonly<GreenTerrainConfig> = {
@@ -266,10 +266,12 @@ export class GreenTerrain {
     const z = -Math.cos(directionOffset) * distance
     const limit = this.size / 2 - 36
 
-    this.courseStart = COURSE_START.clone()
+    const startX = this.randomRange(rng, -16, 16)
+    const startZ = this.randomRange(rng, -12, 14)
+    this.courseStart = new THREE.Vector2(startX, startZ)
     this.courseHole = new THREE.Vector2(
-      THREE.MathUtils.clamp(x, -limit, limit),
-      THREE.MathUtils.clamp(z, -limit, -30)
+      THREE.MathUtils.clamp(startX + x, -limit, limit),
+      THREE.MathUtils.clamp(startZ + z, -limit, -30)
     )
   }
 
@@ -375,7 +377,7 @@ export class GreenTerrain {
           scale,
           rotationY: rng() * Math.PI * 2,
           typeIndex: Math.floor(rng() * 3),
-          colliderRadius: THREE.MathUtils.clamp(0.48 * scale, 0.55, 1.75),
+          colliderRadius: THREE.MathUtils.clamp(0.22 * scale, 0.24, 0.72),
           colliderHeight: THREE.MathUtils.clamp(6.5 * scale, 6, 22),
         })
       }
@@ -517,6 +519,20 @@ export class GreenTerrain {
 
   isWaterAt(x: number, z: number): boolean {
     return this.waterHazards.some((hazard) => this.isInsideWaterShape(x, z, hazard))
+  }
+
+
+  isWaterBetween(start: THREE.Vector3, end: THREE.Vector3, samples = 14): boolean {
+    const count = Math.max(2, Math.floor(samples))
+    for (let i = 1; i <= count; i++) {
+      const t = i / count
+      const x = THREE.MathUtils.lerp(start.x, end.x, t)
+      const z = THREE.MathUtils.lerp(start.z, end.z, t)
+      if (this.isWaterAt(x, z)) {
+        return true
+      }
+    }
+    return false
   }
 
   getNearestLandPosition(x: number, z: number, ballRadius: number): THREE.Vector3 {
