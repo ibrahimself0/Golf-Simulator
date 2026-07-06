@@ -59,6 +59,9 @@ import type { SimulationControlValues } from '../presentation/ui/SimulationPanel
 import { Loop } from '../shared/core/Loop'
 import { Sizes } from '../shared/utils/Sizes'
 
+// Keep the panel value realistic while the actual gameplay gravity is slightly stronger.
+const GAMEPLAY_GRAVITY_MULTIPLIER = 1.08
+
 /**
  * Current game state.
  * Used to coordinate between layers.
@@ -274,7 +277,6 @@ export class GameController {
     }
   }
 
-
   private toggleCameraMode(): void {
     const currentPosition = this.getActiveCameraPosition()
     const currentTarget = this.getActiveCameraTarget()
@@ -362,7 +364,7 @@ export class GameController {
     this.ballPhysics.updateConfig({
       mass: controls.ballMass,
       radius: controls.ballRadius,
-      gravity: controls.gravity,
+      gravity: this.getGameplayGravity(controls.gravity),
       airDensity: controls.airDensity,
       dragCoefficient: controls.dragCoefficient,
       magnusCoefficient: controls.magnusCoefficient,
@@ -412,6 +414,10 @@ export class GameController {
     this.invalidateTrajectoryPreview()
   }
 
+  private getGameplayGravity(displayGravity: number): number {
+    return displayGravity * GAMEPLAY_GRAVITY_MULTIPLIER
+  }
+
   private createWindVelocity(strength: number, directionDegrees: number): THREE.Vector3 {
     const direction = THREE.MathUtils.degToRad(directionDegrees)
     return new THREE.Vector3(Math.sin(direction) * strength, 0, Math.cos(direction) * strength)
@@ -444,9 +450,7 @@ export class GameController {
     this.previousVelocity.set(0, 0, 0)
     this.golfModels.syncBall(this.ballPhysics.getPosition(), this.ballPhysics.getRotation())
     this.invalidateTrajectoryPreview()
-    this.simulationPanels.showStatusMessage(
-      'Penalty stroke! Dropped at nearest land.'
-    )
+    this.simulationPanels.showStatusMessage('Penalty stroke! Dropped at nearest land.')
 
     return true
   }
@@ -549,6 +553,7 @@ export class GameController {
       }
     }
     this.hitController.update(deltaTime)
+    this.golfModels.update(deltaTime, this.controlValues.windStrength)
     const plane = this.golfModels.getPlane()
 
     if (plane) {
@@ -605,7 +610,8 @@ export class GameController {
     }
 
     const instantFps = 1 / deltaTime
-    this.smoothedFps = this.smoothedFps === 0 ? instantFps : THREE.MathUtils.lerp(this.smoothedFps, instantFps, 0.08)
+    this.smoothedFps =
+      this.smoothedFps === 0 ? instantFps : THREE.MathUtils.lerp(this.smoothedFps, instantFps, 0.08)
   }
 
   private getAimDirectionToHole(): THREE.Vector3 {
@@ -691,10 +697,15 @@ export class GameController {
   ): THREE.Vector3[] {
     const startPosition = this.ballPhysics.getPosition()
     const ballConfig = this.ballPhysics.getConfig()
-    const previewBall = new BallPhysics('trajectory-preview-ball', startPosition, this.greenTerrain, {
-      ...ballConfig,
-      windVelocity: ballConfig.windVelocity.clone(),
-    })
+    const previewBall = new BallPhysics(
+      'trajectory-preview-ball',
+      startPosition,
+      this.greenTerrain,
+      {
+        ...ballConfig,
+        windVelocity: ballConfig.windVelocity.clone(),
+      }
+    )
     previewBall.setBoundaryHalfSize(this.courseBoundaryRenderer.getPhysicsHalfSize())
 
     const horizontalAim = this.hitController.getShotDirection(aimDirection)
@@ -749,7 +760,8 @@ export class GameController {
         const holePosition = this.golfModels.hole
           .getObject3D()
           .getWorldPosition(new THREE.Vector3())
-        holePosition.y = this.greenTerrain.getHeightAt(holePosition.x, holePosition.z) + previewBall.getRadius()
+        holePosition.y =
+          this.greenTerrain.getHeightAt(holePosition.x, holePosition.z) + previewBall.getRadius()
         points.push(this.getPreviewPoint(holePosition))
         break
       }

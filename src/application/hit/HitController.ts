@@ -13,7 +13,7 @@ export class HitController {
   private settings: ShotSettings
   private animationTime = 0
   private isAnimating = false
-  private readonly animationDuration = 0.28
+  private readonly animationDuration = 0.42
 
   constructor(
     physicsEngine: PhysicsEngine,
@@ -59,27 +59,52 @@ export class HitController {
   }
 
   update(deltaTime: number): void {
-    const baseBackswing = -0.42
+    const idleRotation = -0.48
 
     if (!this.isAnimating) {
-      this.clubObject.rotation.x = baseBackswing
+      this.clubObject.rotation.x = idleRotation
       return
     }
 
     this.animationTime += Math.max(0, deltaTime)
     const progress = Math.min(this.animationTime / this.animationDuration, 1)
 
-    // A proper swing has a small backswing, a fast downswing through the ball,
-    // and a follow-through. Smoothstep/ease curves make it feel less robotic.
-    const eased = progress < 0.34
-      ? -0.42 - THREE.MathUtils.smoothstep(progress / 0.34, 0, 1) * 0.55
-      : -0.97 + THREE.MathUtils.smoothstep((progress - 0.34) / 0.66, 0, 1) * 1.95
-    this.clubObject.rotation.x = eased
+    // Simple golf swing: short pull back, quick strike through the ball,
+    // then a softer follow-through before returning to the ready pose.
+    const rotationX = this.sampleSwingKeyframes(progress, [
+      { time: 0, value: idleRotation },
+      { time: 0.22, value: -0.88 },
+      { time: 0.48, value: -0.12 },
+      { time: 0.78, value: 0.34 },
+      { time: 1, value: idleRotation },
+    ])
+
+    this.clubObject.rotation.x = rotationX
 
     if (progress >= 1) {
       this.isAnimating = false
-      this.clubObject.rotation.x = baseBackswing
+      this.clubObject.rotation.x = idleRotation
     }
+  }
+
+  private sampleSwingKeyframes(
+    progress: number,
+    keyframes: Array<{ time: number; value: number }>
+  ): number {
+    for (let i = 0; i < keyframes.length - 1; i++) {
+      const current = keyframes[i]
+      const next = keyframes[i + 1]
+      if (!current || !next || progress > next.time) {
+        continue
+      }
+
+      const span = Math.max(next.time - current.time, 1e-6)
+      const localProgress = THREE.MathUtils.clamp((progress - current.time) / span, 0, 1)
+      const eased = localProgress * localProgress * (3 - 2 * localProgress)
+      return THREE.MathUtils.lerp(current.value, next.value, eased)
+    }
+
+    return keyframes[keyframes.length - 1]?.value ?? 0
   }
 
   getShotDirection(aimDirection: THREE.Vector3): THREE.Vector3 {
@@ -119,7 +144,7 @@ export class HitController {
   reset(): void {
     this.animationTime = 0
     this.isAnimating = false
-    this.clubObject.rotation.x = -0.42
+    this.clubObject.rotation.x = -0.48
   }
 
   private clampSettings(): void {
@@ -131,7 +156,10 @@ export class HitController {
       0,
       45
     )
-    this.settings.directionDegrees = THREE.MathUtils.euclideanModulo(this.settings.directionDegrees, 360)
+    this.settings.directionDegrees = THREE.MathUtils.euclideanModulo(
+      this.settings.directionDegrees,
+      360
+    )
     this.settings.spinPercent = THREE.MathUtils.clamp(this.settings.spinPercent, -100, 100)
     this.settings.sideSpinPercent = THREE.MathUtils.clamp(this.settings.sideSpinPercent, -100, 100)
     this.settings.effectiveClubMass = Math.max(0.01, this.settings.effectiveClubMass)

@@ -376,7 +376,7 @@ export class GreenTerrain {
           z,
           scale,
           rotationY: rng() * Math.PI * 2,
-          typeIndex: Math.floor(rng() * 3),
+          typeIndex: rng() < 0.78 ? 1 : 0,
           colliderRadius: THREE.MathUtils.clamp(0.22 * scale, 0.24, 0.72),
           colliderHeight: THREE.MathUtils.clamp(6.5 * scale, 6, 22),
         })
@@ -520,7 +520,6 @@ export class GreenTerrain {
   isWaterAt(x: number, z: number): boolean {
     return this.waterHazards.some((hazard) => this.isInsideWaterShape(x, z, hazard))
   }
-
 
   isWaterBetween(start: THREE.Vector3, end: THREE.Vector3, samples = 14): boolean {
     const count = Math.max(2, Math.floor(samples))

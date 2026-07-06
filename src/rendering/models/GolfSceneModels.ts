@@ -15,7 +15,7 @@ export class GolfSceneModels {
   private readonly treeModels: THREE.Object3D[] = []
   private readonly proceduralTrees: THREE.Object3D[] = []
   private loadedTrees = 0
-  private readonly TOTAL_TREE_MODELS = 3
+  private readonly TOTAL_TREE_MODELS = 2
   private physicalBallRadius: number
   private plane?: THREE.Object3D
   private mountain?: THREE.Object3D
@@ -47,6 +47,10 @@ export class GolfSceneModels {
     this.refreshProceduralTrees()
   }
 
+  update(deltaTime: number, windStrength: number): void {
+    this.hole.update(deltaTime, windStrength)
+  }
+
   private placeCourseObjects(): void {
     const startPoint = this.terrain.getStartPosition()
     const start = new THREE.Vector3(
@@ -55,7 +59,13 @@ export class GolfSceneModels {
       startPoint.y
     )
     this.ball.sync(start, new THREE.Euler())
-    this.club.place(new THREE.Vector3(startPoint.x + 0.34, this.terrain.getHeightAt(startPoint.x + 0.34, startPoint.y + 0.25), startPoint.y + 0.25))
+    this.club.place(
+      new THREE.Vector3(
+        startPoint.x + 0.34,
+        this.terrain.getHeightAt(startPoint.x + 0.34, startPoint.y + 0.25),
+        startPoint.y + 0.25
+      )
+    )
 
     const holePoint = this.terrain.getHolePosition()
     this.hole.place(
@@ -106,11 +116,7 @@ export class GolfSceneModels {
   }
 
   private loadTreeModels(): void {
-    const paths = [
-      '/models/tree_oak_dark.glb',
-      '/models/tree_pineDefaultA.glb',
-      '/models/tree_palm.glb',
-    ]
+    const paths = ['/models/tree_oak_dark.glb', '/models/tree_pineDefaultA.glb']
 
     paths.forEach((path) => {
       this.loader.load(path, (gltf) => {

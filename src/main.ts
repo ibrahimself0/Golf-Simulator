@@ -19,8 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
     throw new Error('❌ No #canvas element found in index.html');
   }
 
-  console.log('🎮 Starting Golf Simulation...');
-
   // Create and initialize the game
   const game = new GameController(canvas);
 
@@ -30,17 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Hot-module replacement cleanup (Vite only)
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
-      console.log('🧹 Hot module reload - cleaning up...');
       game.dispose();
     });
   }
-
-  console.log('✅ Golf Simulation ready!');
-  console.log('Controls:');
-  console.log('  Click canvas: Capture mouse');
-  console.log('  Mouse: Look around');
-  console.log('  WASD or Arrow Keys: Fly');
-  console.log('  Space / Shift: Fly up / down');
-  console.log('  H: Hit ball');
-  console.log('  R: Reset ball');
 });
