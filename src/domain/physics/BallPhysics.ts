@@ -21,13 +21,23 @@ import type {
   ClubImpactResult,
 } from './PhysicsTypes'
 
+const TREE_COLLISION_RESTITUTION = 0.32
+const TREE_COLLISION_TANGENTIAL_DAMPING = 0.48
+const TREE_COLLISION_SPIN_DAMPING = 0.45
+const FLAG_COLLISION_RESTITUTION = 0.42
+const FLAG_COLLISION_TANGENTIAL_DAMPING = 0.58
+const FLAG_COLLISION_SPIN_DAMPING = 0.55
+
 export class BallPhysics extends BasePhysicsObject {
   private readonly terrain: GreenTerrain
   private readonly config: BallPhysicsConfig
-  private readonly crossSectionArea: number
+  private crossSectionArea: number
   private angularVelocity = new THREE.Vector3()
   private rollingRotation = new THREE.Euler()
   private motionState: BallMotionState = 'resting'
+  private boundaryHalfSize: number | null = null
+  private nearRestTime = 0
+  private readonly restHoldDuration = 0.25
 
   constructor(
     id: string,
@@ -63,7 +73,11 @@ export class BallPhysics extends BasePhysicsObject {
       } else {
         this.integrateGrounded(step)
       }
+      this.resolveTreeCollisions()
+      this.resolveFlagCollision()
+      this.resolveBoundaryCollision()
       this.integrateRotation(step)
+      this.updateSleepState(step)
       remainingTime -= step
     }
   }
@@ -118,7 +132,10 @@ export class BallPhysics extends BasePhysicsObject {
     this.velocity.addScaledVector(normal, -this.velocity.dot(normal))
 
     const gravity = new THREE.Vector3(0, -this.config.gravity, 0)
-    const slopeAcceleration = gravity.clone().addScaledVector(normal, -gravity.dot(normal))
+    const slopeAcceleration = gravity
+      .clone()
+      .addScaledVector(normal, -gravity.dot(normal))
+      .multiplyScalar(this.config.slopeStrength)
     const resistanceMagnitude = this.config.rollingResistance * this.config.gravity
     const groundSpeed = this.velocity.length()
     const previousVelocity = this.velocity.clone()
@@ -126,10 +143,7 @@ export class BallPhysics extends BasePhysicsObject {
     const contactVelocity = this.velocity
       .clone()
       .add(this.angularVelocity.clone().cross(contactOffset))
-    const slipVelocity = contactVelocity.addScaledVector(
-      normal,
-      -contactVelocity.dot(normal)
-    )
+    const slipVelocity = contactVelocity.addScaledVector(normal, -contactVelocity.dot(normal))
     const isSliding = slipVelocity.length() >= this.config.stopSpeed
 
     if (isSliding) {
@@ -144,8 +158,7 @@ export class BallPhysics extends BasePhysicsObject {
         .multiplyScalar(-frictionAccelerationMagnitude)
       slopeAcceleration.add(frictionAcceleration)
 
-      const inertia =
-        (2 / 5) * this.config.mass * this.config.radius * this.config.radius
+      const inertia = (2 / 5) * this.config.mass * this.config.radius * this.config.radius
       const frictionForce = frictionAcceleration.multiplyScalar(this.config.mass)
       this.angularVelocity.addScaledVector(
         contactOffset.clone().cross(frictionForce),
@@ -158,15 +171,9 @@ export class BallPhysics extends BasePhysicsObject {
       }
 
       this.velocity.set(0, 0, 0)
-      slopeAcceleration.addScaledVector(
-        slopeAcceleration.clone().normalize(),
-        -resistanceMagnitude
-      )
+      slopeAcceleration.addScaledVector(slopeAcceleration.clone().normalize(), -resistanceMagnitude)
     } else {
-      slopeAcceleration.addScaledVector(
-        this.velocity.clone().normalize(),
-        -resistanceMagnitude
-      )
+      slopeAcceleration.addScaledVector(this.velocity.clone().normalize(), -resistanceMagnitude)
     }
 
     this.velocity.addScaledVector(slopeAcceleration, deltaTime)
@@ -209,7 +216,6 @@ export class BallPhysics extends BasePhysicsObject {
 
   /** Resolves a sphere-plane collision using the terrain's local surface normal. */
   private resolveTerrainCollision(): void {
-
     const normal = this.terrain.getSurfaceNormalAt(this.position.x, this.position.z)
     const contactHeight = this.getContactHeight(normal)
     if (this.position.y > contactHeight) {
@@ -217,11 +223,6 @@ export class BallPhysics extends BasePhysicsObject {
     }
 
     this.position.y = contactHeight
-    console.log('Ball hit terrain at:', {
-      x: this.position.x,
-      y: contactHeight,
-      z: this.position.z,
-    })
     const normalSpeed = this.velocity.dot(normal)
     if (normalSpeed >= 0) {
       return
@@ -231,28 +232,19 @@ export class BallPhysics extends BasePhysicsObject {
     const contactVelocity = this.velocity
       .clone()
       .add(this.angularVelocity.clone().cross(contactOffset))
-    const slipVelocity = contactVelocity.addScaledVector(
-      normal,
-      -contactVelocity.dot(normal)
-    )
-    const inertia =
-      (2 / 5) * this.config.mass * this.config.radius * this.config.radius
+    const slipVelocity = contactVelocity.addScaledVector(normal, -contactVelocity.dot(normal))
+    const inertia = (2 / 5) * this.config.mass * this.config.radius * this.config.radius
     const inverseTangentialMass =
-      1 / this.config.mass +
-      (this.config.radius * this.config.radius) / inertia
+      1 / this.config.mass + (this.config.radius * this.config.radius) / inertia
     const frictionImpulse = slipVelocity.multiplyScalar(-1 / inverseTangentialMass)
-    const normalImpulseMagnitude =
-      this.config.mass * (1 + this.config.restitution) * -normalSpeed
+    const normalImpulseMagnitude = this.config.mass * (1 + this.config.restitution) * -normalSpeed
     const maximumFrictionImpulse = this.config.impactFriction * normalImpulseMagnitude
     if (frictionImpulse.length() > maximumFrictionImpulse) {
       frictionImpulse.setLength(maximumFrictionImpulse)
     }
 
     this.velocity.addScaledVector(frictionImpulse, 1 / this.config.mass)
-    this.angularVelocity.addScaledVector(
-      contactOffset.clone().cross(frictionImpulse),
-      1 / inertia
-    )
+    this.angularVelocity.addScaledVector(contactOffset.clone().cross(frictionImpulse), 1 / inertia)
     const reboundSpeed = -normalSpeed * this.config.restitution
     this.velocity.addScaledVector(normal, (1 + this.config.restitution) * -normalSpeed)
 
@@ -264,6 +256,186 @@ export class BallPhysics extends BasePhysicsObject {
     }
   }
 
+  /**
+   * Resolves ball collision against every generated tree trunk.
+   * The tree hitbox is intentionally simple: an invisible vertical cylinder
+   * around the trunk, which is light enough for many procedural trees.
+   */
+  private resolveTreeCollisions(): void {
+    const trees = this.terrain.getTreeInstances()
+    if (trees.length === 0) {
+      return
+    }
+
+    for (const tree of trees) {
+      const didCollide = this.resolveVerticalCylinderCollision(
+        tree.x,
+        tree.z,
+        tree.colliderRadius,
+        tree.colliderHeight,
+        TREE_COLLISION_RESTITUTION,
+        TREE_COLLISION_TANGENTIAL_DAMPING,
+        TREE_COLLISION_SPIN_DAMPING
+      )
+
+      if (didCollide && !this._isActive) {
+        return
+      }
+    }
+  }
+
+  private resolveFlagCollision(): void {
+    const flag = this.terrain.getFlagCollider()
+    this.resolveVerticalCylinderCollision(
+      flag.x,
+      flag.z,
+      flag.radius,
+      flag.height,
+      FLAG_COLLISION_RESTITUTION,
+      FLAG_COLLISION_TANGENTIAL_DAMPING,
+      FLAG_COLLISION_SPIN_DAMPING
+    )
+  }
+
+  private resolveVerticalCylinderCollision(
+    centerX: number,
+    centerZ: number,
+    colliderRadius: number,
+    colliderHeight: number,
+    restitution: number,
+    tangentialDamping: number,
+    spinDamping: number
+  ): boolean {
+    const dx = this.position.x - centerX
+    const dz = this.position.z - centerZ
+    const combinedRadius = colliderRadius + this.config.radius
+    const distanceSq = dx * dx + dz * dz
+
+    if (distanceSq >= combinedRadius * combinedRadius) {
+      return false
+    }
+
+    const colliderBaseHeight = this.terrain.getHeightAt(centerX, centerZ)
+    const ballBottom = this.position.y - this.config.radius
+    const ballTop = this.position.y + this.config.radius
+
+    if (ballTop < colliderBaseHeight || ballBottom > colliderBaseHeight + colliderHeight) {
+      return false
+    }
+
+    const distance = Math.sqrt(distanceSq)
+    let normalX = 1
+    let normalZ = 0
+
+    if (distance > 1e-6) {
+      normalX = dx / distance
+      normalZ = dz / distance
+    } else {
+      const horizontalVelocity = new THREE.Vector3(this.velocity.x, 0, this.velocity.z)
+      if (horizontalVelocity.lengthSq() > 1e-8) {
+        horizontalVelocity.normalize().multiplyScalar(-1)
+        normalX = horizontalVelocity.x
+        normalZ = horizontalVelocity.z
+      }
+    }
+
+    const penetration = combinedRadius - distance
+    this.position.x += normalX * penetration
+    this.position.z += normalZ * penetration
+
+    const horizontalVelocity = new THREE.Vector3(this.velocity.x, 0, this.velocity.z)
+    const normalSpeed = horizontalVelocity.x * normalX + horizontalVelocity.z * normalZ
+
+    if (normalSpeed < 0) {
+      const tangentVelocity = horizontalVelocity
+        .clone()
+        .add(new THREE.Vector3(normalX, 0, normalZ).multiplyScalar(-normalSpeed))
+      const reflectedNormalVelocity = new THREE.Vector3(normalX, 0, normalZ).multiplyScalar(
+        -normalSpeed * restitution
+      )
+      const newHorizontalVelocity = reflectedNormalVelocity.add(
+        tangentVelocity.multiplyScalar(tangentialDamping)
+      )
+      this.velocity.x = newHorizontalVelocity.x
+      this.velocity.z = newHorizontalVelocity.z
+    } else {
+      this.velocity.x *= tangentialDamping
+      this.velocity.z *= tangentialDamping
+    }
+
+    this.angularVelocity.multiplyScalar(spinDamping)
+
+    if (this.motionState === 'airborne') {
+      this.resolveTerrainCollision()
+    } else {
+      this.placeOnTerrain()
+    }
+
+    if (this.velocity.length() <= this.getGameplayStopSpeed()) {
+      this.stop()
+    } else if (this.motionState === 'resting') {
+      this.motionState = 'grounded'
+      this._isActive = true
+    }
+
+    return true
+  }
+
+  /** Keeps the ball inside the generated map by bouncing it off the square border. */
+  private resolveBoundaryCollision(): void {
+    if (this.boundaryHalfSize === null || this.boundaryHalfSize <= 0) {
+      return
+    }
+
+    const limit = Math.max(0, this.boundaryHalfSize - this.config.radius)
+    let bounced = false
+
+    if (this.position.x < -limit) {
+      this.position.x = -limit
+      if (this.velocity.x < 0) {
+        this.velocity.x = -this.velocity.x * this.config.restitution
+        bounced = true
+      }
+    } else if (this.position.x > limit) {
+      this.position.x = limit
+      if (this.velocity.x > 0) {
+        this.velocity.x = -this.velocity.x * this.config.restitution
+        bounced = true
+      }
+    }
+
+    if (this.position.z < -limit) {
+      this.position.z = -limit
+      if (this.velocity.z < 0) {
+        this.velocity.z = -this.velocity.z * this.config.restitution
+        bounced = true
+      }
+    } else if (this.position.z > limit) {
+      this.position.z = limit
+      if (this.velocity.z > 0) {
+        this.velocity.z = -this.velocity.z * this.config.restitution
+        bounced = true
+      }
+    }
+
+    const contactHeight = this.getContactHeight(
+      this.terrain.getSurfaceNormalAt(this.position.x, this.position.z)
+    )
+    if (this.position.y < contactHeight || this.motionState !== 'airborne') {
+      this.position.y = contactHeight
+    }
+
+    if (bounced) {
+      this.angularVelocity.multiplyScalar(0.7)
+      if (this.velocity.length() <= this.config.stopSpeed) {
+        this.stop()
+      } else if (this.motionState === 'resting') {
+        this.motionState = 'grounded'
+        this._isActive = true
+      }
+    }
+  }
+
   private integrateRotation(deltaTime: number): void {
     this.rollingRotation.x += this.angularVelocity.x * deltaTime
     this.rollingRotation.y += this.angularVelocity.y * deltaTime
@@ -271,10 +443,41 @@ export class BallPhysics extends BasePhysicsObject {
   }
 
   /**
+   * Gives the ball a stable resting state once it is visually stopped.
+   * Numerical physics can keep producing tiny slope/friction/spin oscillations,
+   * so this works like the sleep threshold used by most physics engines.
+   */
+  private updateSleepState(deltaTime: number): void {
+    if (this.motionState !== 'grounded') {
+      this.nearRestTime = 0
+      return
+    }
+
+    if (this.velocity.length() <= this.getGameplayStopSpeed()) {
+      this.nearRestTime += deltaTime
+      this.velocity.multiplyScalar(0.82)
+      this.angularVelocity.multiplyScalar(0.82)
+
+      if (this.nearRestTime >= this.restHoldDuration) {
+        this.stop()
+      }
+      return
+    }
+
+    this.nearRestTime = 0
+  }
+
+  private getGameplayStopSpeed(): number {
+    return Math.max(this.config.stopSpeed, 0.05)
+  }
+
+  /**
    * Applies a physically calculated club-head collision to the ball.
    * A lofted face normal gives the ball an upward launch component.
    */
   hitByClub(input: ClubImpactInput): ClubImpactResult {
+    this.nearRestTime = 0
+
     if (this.motionState === 'resting') {
       this.placeOnTerrain()
     }
@@ -290,6 +493,7 @@ export class BallPhysics extends BasePhysicsObject {
     if (result.didHit) {
       this.velocity.copy(result.linearVelocity)
       this.angularVelocity.copy(result.angularVelocity)
+      this.nearRestTime = 0
       this.motionState = this.velocity.y > this.config.bounceSpeed ? 'airborne' : 'grounded'
       this._isActive = true
     }
@@ -305,11 +509,13 @@ export class BallPhysics extends BasePhysicsObject {
     if (direction.lengthSq() === 0 || launchSpeed <= 0) {
       return
     }
+    this.nearRestTime = 0
     if (this.motionState === 'resting') {
       this.placeOnTerrain()
     }
 
     this.velocity.copy(direction).normalize().multiplyScalar(launchSpeed)
+    this.nearRestTime = 0
     this.motionState = this.velocity.y > this.config.bounceSpeed ? 'airborne' : 'grounded'
     this._isActive = true
   }
@@ -338,6 +544,22 @@ export class BallPhysics extends BasePhysicsObject {
     return this._isActive
   }
 
+  canBeHit(): boolean {
+    return (
+      this.motionState === 'resting' ||
+      (this.motionState === 'grounded' && this.velocity.length() <= this.getGameplayStopSpeed())
+    )
+  }
+
+  settleForHit(): boolean {
+    if (!this.canBeHit()) {
+      return false
+    }
+
+    this.stop()
+    return true
+  }
+
   getRadius(): number {
     return this.config.radius
   }
@@ -346,8 +568,66 @@ export class BallPhysics extends BasePhysicsObject {
     return this.config.mass
   }
 
+  getConfig(): Readonly<BallPhysicsConfig> {
+    return this.config
+  }
+
+  setBoundaryHalfSize(halfSize: number | null): void {
+    this.boundaryHalfSize = halfSize === null ? null : Math.max(0, halfSize)
+    this.resolveBoundaryCollision()
+  }
+
+  updateConfig(config: Partial<BallPhysicsConfig>): void {
+    const previousRadius = this.config.radius
+
+    Object.assign(this.config, {
+      ...config,
+      windVelocity: config.windVelocity?.clone() ?? this.config.windVelocity,
+    })
+
+    this.validateConfiguration()
+    this.crossSectionArea = Math.PI * this.config.radius * this.config.radius
+
+    if (this.config.radius !== previousRadius && !this._isActive) {
+      this.placeOnTerrain()
+    }
+  }
+
+  applyShotSpin(
+    horizontalDirection: THREE.Vector3,
+    spinPercent: number,
+    sideSpinPercent: number
+  ): void {
+    const direction = new THREE.Vector3(horizontalDirection.x, 0, horizontalDirection.z)
+    if (direction.lengthSq() === 0) {
+      return
+    }
+
+    direction.normalize()
+    const upAxis = new THREE.Vector3(0, 1, 0)
+    const topSpinAxis = direction.clone().cross(upAxis).normalize()
+    const maximumSpin = 300
+    const maximumSideSpin = 120
+
+    this.angularVelocity.addScaledVector(
+      topSpinAxis,
+      (-THREE.MathUtils.clamp(spinPercent, -100, 100) * maximumSpin) / 100
+    )
+    this.angularVelocity.addScaledVector(
+      upAxis,
+      (THREE.MathUtils.clamp(sideSpinPercent, -100, 100) * maximumSideSpin) / 100
+    )
+  }
+
+  alignToTerrain(): void {
+    if (!this._isActive) {
+      this.placeOnTerrain()
+    }
+  }
+
   reset(): void {
     super.reset()
+    this.nearRestTime = 0
     this.velocity.set(0, 0, 0)
     this.angularVelocity.set(0, 0, 0)
     this.rollingRotation.set(0, 0, 0)
@@ -357,6 +637,7 @@ export class BallPhysics extends BasePhysicsObject {
   }
 
   private stop(): void {
+    this.nearRestTime = 0
     this.velocity.set(0, 0, 0)
     this.angularVelocity.set(0, 0, 0)
     this.motionState = 'resting'
@@ -388,6 +669,7 @@ export class BallPhysics extends BasePhysicsObject {
       this.config.impactFriction < 0 ||
       this.config.slidingFriction < 0 ||
       this.config.rollingResistance < 0 ||
+      this.config.slopeStrength < 0 ||
       this.config.stopSpeed < 0 ||
       this.config.bounceSpeed < 0 ||
       this.config.simulationStep <= 0 ||

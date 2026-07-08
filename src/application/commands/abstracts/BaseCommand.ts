@@ -53,7 +53,7 @@ export abstract class BaseCommand {
    * Optional: Check if this command can be executed right now.
    * (e.g., can't swing if the ball is already moving)
    */
-  canExecute(context: GameContext): boolean {
+  canExecute(_context: GameContext): boolean {
     return true;
   }
 }

@@ -19,6 +19,7 @@ export interface BallPhysicsConfig {
   impactFriction: number
   slidingFriction: number
   rollingResistance: number
+  slopeStrength: number
   stopSpeed: number
   bounceSpeed: number
   maximumDeltaTime: number
@@ -38,6 +39,7 @@ export const DEFAULT_BALL_PHYSICS: Readonly<BallPhysicsConfig> = {
   impactFriction: 0.2,
   slidingFriction: 0.25,
   rollingResistance: 0.04,
+  slopeStrength: 1,
   stopSpeed: 0.03,
   bounceSpeed: 0.35,
   maximumDeltaTime: 0.05,

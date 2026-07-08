@@ -16,10 +16,12 @@ const DEFAULT_OPTIONS: BallModelOptions = {
 /** Simple visible ball. Its display size is independent from physics size. */
 export class BallModel extends BaseVisualModel {
   private groundOffset: number
+  private readonly displayRadius: number
 
   constructor(options: Partial<BallModelOptions> = {}) {
     super('ball-model')
     const values = { ...DEFAULT_OPTIONS, ...options }
+    this.displayRadius = values.displayRadius
     this.groundOffset = Math.max(0, values.displayRadius - values.physicalRadius)
 
     const geometry = new THREE.SphereGeometry(values.displayRadius, 20, 14)
@@ -38,6 +40,10 @@ export class BallModel extends BaseVisualModel {
     this.root.position.copy(position)
     this.root.position.y += this.groundOffset
     this.root.rotation.copy(rotation)
+  }
+
+  setPhysicalRadius(physicalRadius: number): void {
+    this.groundOffset = Math.max(0, this.displayRadius - physicalRadius)
   }
 
   /** Set to zero when a replacement model already has the correct physical size. */

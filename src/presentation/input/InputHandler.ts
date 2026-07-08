@@ -7,7 +7,13 @@ export class InputHandler {
   private readonly mouseMoveCallbacks: Array<
     (deltaX: number, deltaY: number) => void
   > = []
+  private readonly mouseDragCallbacks: Array<
+    (deltaX: number, deltaY: number) => void
+  > = []
+  private readonly wheelCallbacks: Array<(deltaY: number) => void> = []
   private readonly pointerLockCallbacks: Array<(isLocked: boolean) => void> = []
+  private isMouseDown = false
+  private pointerLockEnabled = true
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -17,6 +23,9 @@ export class InputHandler {
     document.addEventListener('mousemove', this.handleMouseMove)
     document.addEventListener('pointerlockchange', this.handlePointerLockChange)
     this.canvas.addEventListener('click', this.capturePointer)
+    this.canvas.addEventListener('mousedown', this.handleMouseDown)
+    window.addEventListener('mouseup', this.handleMouseUp)
+    this.canvas.addEventListener('wheel', this.handleWheel, { passive: false })
   }
 
   private normalizeKey(key: string): string {
@@ -41,10 +50,18 @@ export class InputHandler {
   }
 
   private handleMouseMove = (event: MouseEvent): void => {
-    if (!this.isPointerLocked()) return
-    this.mouseMoveCallbacks.forEach((callback) =>
-      callback(event.movementX, event.movementY)
-    )
+    if (this.isPointerLocked()) {
+      this.mouseMoveCallbacks.forEach((callback) =>
+        callback(event.movementX, event.movementY)
+      )
+      return
+    }
+
+    if (this.isMouseDown) {
+      this.mouseDragCallbacks.forEach((callback) =>
+        callback(event.movementX, event.movementY)
+      )
+    }
   }
 
   private handlePointerLockChange = (): void => {
@@ -53,8 +70,26 @@ export class InputHandler {
     this.pointerLockCallbacks.forEach((callback) => callback(isLocked))
   }
 
+  private handleMouseDown = (event: MouseEvent): void => {
+    if (event.button === 0 && !this.isPointerLocked()) {
+      this.isMouseDown = true
+    }
+  }
+
+  private handleMouseUp = (): void => {
+    this.isMouseDown = false
+  }
+
+  private handleWheel = (event: WheelEvent): void => {
+    if (this.wheelCallbacks.length === 0) {
+      return
+    }
+    event.preventDefault()
+    this.wheelCallbacks.forEach((callback) => callback(event.deltaY))
+  }
+
   private capturePointer = (): void => {
-    if (!this.isPointerLocked()) {
+    if (this.pointerLockEnabled && !this.isPointerLocked()) {
       void this.canvas.requestPointerLock()
     }
   }
@@ -96,6 +131,31 @@ export class InputHandler {
     }
   }
 
+  onMouseDrag(
+    callback: (deltaX: number, deltaY: number) => void
+  ): () => void {
+    this.mouseDragCallbacks.push(callback)
+    return () => {
+      const index = this.mouseDragCallbacks.indexOf(callback)
+      if (index >= 0) this.mouseDragCallbacks.splice(index, 1)
+    }
+  }
+
+  onWheel(callback: (deltaY: number) => void): () => void {
+    this.wheelCallbacks.push(callback)
+    return () => {
+      const index = this.wheelCallbacks.indexOf(callback)
+      if (index >= 0) this.wheelCallbacks.splice(index, 1)
+    }
+  }
+
+  setPointerLockEnabled(enabled: boolean): void {
+    this.pointerLockEnabled = enabled
+    if (!enabled && this.isPointerLocked()) {
+      document.exitPointerLock()
+    }
+  }
+
   onPointerLockChange(callback: (isLocked: boolean) => void): void {
     this.pointerLockCallbacks.push(callback)
     callback(this.isPointerLocked())
@@ -123,6 +183,9 @@ export class InputHandler {
       this.handlePointerLockChange
     )
     this.canvas.removeEventListener('click', this.capturePointer)
+    this.canvas.removeEventListener('mousedown', this.handleMouseDown)
+    window.removeEventListener('mouseup', this.handleMouseUp)
+    this.canvas.removeEventListener('wheel', this.handleWheel)
     this.clearPressedKeys()
     if (this.isPointerLocked()) document.exitPointerLock()
   }

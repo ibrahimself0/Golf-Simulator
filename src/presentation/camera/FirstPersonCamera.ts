@@ -1,8 +1,8 @@
 import * as THREE from 'three'
+import { GreenTerrain } from '../../domain/physics/GreenTerrain'
 import { InputHandler } from '../input/InputHandler'
 import { BaseCamera } from './abstracts/BaseCamera'
 
-/** A free-flying spectator camera. It never reads from or writes to game physics. */
 export class FirstPersonCamera extends BaseCamera {
   private readonly input: InputHandler
   private readonly initialPosition: THREE.Vector3
@@ -11,6 +11,9 @@ export class FirstPersonCamera extends BaseCamera {
   private readonly maxPitch = Math.PI / 2 - 0.01
   private yaw = 0
   private pitch = -0.18
+  private terrain: GreenTerrain | null = null
+  private minimumGroundClearance = 1.1
+  private borderMargin = 2
   private readonly forward = new THREE.Vector3()
   private readonly right = new THREE.Vector3()
   private readonly movement = new THREE.Vector3()
@@ -29,9 +32,9 @@ export class FirstPersonCamera extends BaseCamera {
     this.updateTarget()
   }
 
-  /** Move in camera-relative horizontal directions, with explicit vertical flight. */
   update(deltaTime: number): void {
     if (!this.input.isPointerLocked()) {
+      this.applyBounds()
       this.updateTarget()
       return
     }
@@ -49,12 +52,30 @@ export class FirstPersonCamera extends BaseCamera {
     if (this.input.isKeyPressed('shift')) this.movement.y -= 1
 
     if (this.movement.lengthSq() > 0) {
-      this.position.addScaledVector(
-        this.movement.normalize(),
-        this.moveSpeed * frameTime
-      )
+      this.position.addScaledVector(this.movement.normalize(), this.moveSpeed * frameTime)
     }
 
+    this.applyBounds()
+    this.updateTarget()
+  }
+
+  setTerrainConstraint(terrain: GreenTerrain, minimumGroundClearance = 1.1, borderMargin = 2): void {
+    this.terrain = terrain
+    this.minimumGroundClearance = minimumGroundClearance
+    this.borderMargin = borderMargin
+    this.applyBounds()
+    this.updateTarget()
+  }
+
+  setPose(position: THREE.Vector3, target: THREE.Vector3): void {
+    this.position.copy(position)
+    const direction = target.clone().sub(position)
+    if (direction.lengthSq() > 0) {
+      direction.normalize()
+      this.yaw = Math.atan2(direction.x, -direction.z)
+      this.pitch = Math.asin(THREE.MathUtils.clamp(direction.y, -1, 1))
+    }
+    this.applyBounds()
     this.updateTarget()
   }
 
@@ -66,6 +87,18 @@ export class FirstPersonCamera extends BaseCamera {
       this.maxPitch
     )
     this.updateTarget()
+  }
+
+  private applyBounds(): void {
+    if (!this.terrain) {
+      return
+    }
+
+    const half = this.terrain.getSize() / 2 - this.borderMargin
+    this.position.x = THREE.MathUtils.clamp(this.position.x, -half, half)
+    this.position.z = THREE.MathUtils.clamp(this.position.z, -half, half)
+    const ground = this.terrain.getHeightAt(this.position.x, this.position.z)
+    this.position.y = Math.max(this.position.y, ground + this.minimumGroundClearance)
   }
 
   private updateTarget(): void {
@@ -93,6 +126,7 @@ export class FirstPersonCamera extends BaseCamera {
     this.position.copy(this.initialPosition)
     this.yaw = 0
     this.pitch = -0.18
+    this.applyBounds()
     this.updateTarget()
   }
 

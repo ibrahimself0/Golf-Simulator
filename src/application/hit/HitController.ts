@@ -3,63 +3,54 @@ import { BallPhysics } from '../../domain/physics/BallPhysics'
 import { ClubImpact } from '../../domain/physics/ClubImpact'
 import { PhysicsEngine } from '../../domain/physics/PhysicsEngine'
 import type { ClubImpactResult } from '../../domain/physics/PhysicsTypes'
-import type { HitStrengthLevel } from './HitStrengthLevels'
+import type { ShotSettings } from './ShotSettings'
 
-/** Bridges keyboard-level shot choices to physics and a small club animation. */
+/** Bridges shot settings to physics and a small club animation. */
 export class HitController {
   private readonly physicsEngine: PhysicsEngine
   private readonly ball: BallPhysics
   private readonly clubObject: THREE.Object3D
-  private readonly levels: readonly HitStrengthLevel[]
-  private selectedLevelIndex: number
-  private readonly restRotation: THREE.Euler
+  private settings: ShotSettings
   private animationTime = 0
   private isAnimating = false
-  private readonly animationDuration = 0.28
+  private readonly animationDuration = 0.42
 
   constructor(
     physicsEngine: PhysicsEngine,
     ball: BallPhysics,
     clubObject: THREE.Object3D,
-    levels: readonly HitStrengthLevel[],
-    initialLevelIndex: number = 1
+    initialSettings: ShotSettings
   ) {
-    if (levels.length === 0) {
-      throw new Error('At least one hit strength level is required')
-    }
-
     this.physicsEngine = physicsEngine
     this.ball = ball
     this.clubObject = clubObject
-    this.levels = levels
-    this.selectedLevelIndex = Math.min(
-      Math.max(initialLevelIndex, 0),
-      levels.length - 1
-    )
-    this.restRotation = clubObject.rotation.clone()
+    this.settings = { ...initialSettings }
   }
 
   hit(aimDirection: THREE.Vector3): ClubImpactResult | null {
-    if (this.ball.isActive()) {
+    if (!this.ball.settleForHit()) {
       return null
     }
 
-    const horizontalAim = new THREE.Vector3(aimDirection.x, 0, aimDirection.z)
+    const horizontalAim = this.getShotDirection(aimDirection)
     if (horizontalAim.lengthSq() === 0) {
       return null
     }
-    horizontalAim.normalize()
 
-    const level = this.getSelectedLevel()
     const result = this.physicsEngine.hitBall(this.ball, {
-      clubHeadVelocity: horizontalAim.clone().multiplyScalar(level.clubHeadSpeed),
-      faceNormal: ClubImpact.createFaceNormal(horizontalAim, level.loftDegrees),
-      effectiveClubMass: level.effectiveClubMass,
-      restitution: level.restitution,
-      friction: level.friction,
+      clubHeadVelocity: horizontalAim.clone().multiplyScalar(this.getClubHeadSpeed()),
+      faceNormal: ClubImpact.createFaceNormal(horizontalAim, this.settings.launchAngleDegrees),
+      effectiveClubMass: this.settings.effectiveClubMass,
+      restitution: this.settings.restitution,
+      friction: this.settings.friction,
     })
 
     if (result.didHit) {
+      this.ball.applyShotSpin(
+        horizontalAim,
+        this.settings.spinPercent,
+        this.settings.sideSpinPercent
+      )
       this.animationTime = 0
       this.isAnimating = true
     }
@@ -68,55 +59,112 @@ export class HitController {
   }
 
   update(deltaTime: number): void {
+    const idleRotation = -0.48
+
     if (!this.isAnimating) {
+      this.clubObject.rotation.x = idleRotation
       return
     }
 
     this.animationTime += Math.max(0, deltaTime)
     const progress = Math.min(this.animationTime / this.animationDuration, 1)
-    this.clubObject.rotation.copy(this.restRotation)
-    this.clubObject.rotation.z += Math.sin(progress * Math.PI) * 0.9
+
+    // Simple golf swing: short pull back, quick strike through the ball,
+    // then a softer follow-through before returning to the ready pose.
+    const rotationX = this.sampleSwingKeyframes(progress, [
+      { time: 0, value: idleRotation },
+      { time: 0.22, value: -0.88 },
+      { time: 0.48, value: -0.12 },
+      { time: 0.78, value: 0.34 },
+      { time: 1, value: idleRotation },
+    ])
+
+    this.clubObject.rotation.x = rotationX
 
     if (progress >= 1) {
       this.isAnimating = false
-      this.clubObject.rotation.copy(this.restRotation)
+      this.clubObject.rotation.x = idleRotation
     }
   }
 
-  selectLevel(index: number): boolean {
-    if (!Number.isInteger(index) || index < 0 || index >= this.levels.length) {
-      return false
+  private sampleSwingKeyframes(
+    progress: number,
+    keyframes: Array<{ time: number; value: number }>
+  ): number {
+    for (let i = 0; i < keyframes.length - 1; i++) {
+      const current = keyframes[i]
+      const next = keyframes[i + 1]
+      if (!current || !next || progress > next.time) {
+        continue
+      }
+
+      const span = Math.max(next.time - current.time, 1e-6)
+      const localProgress = THREE.MathUtils.clamp((progress - current.time) / span, 0, 1)
+      const eased = localProgress * localProgress * (3 - 2 * localProgress)
+      return THREE.MathUtils.lerp(current.value, next.value, eased)
     }
 
-    this.selectedLevelIndex = index
-    return true
+    return keyframes[keyframes.length - 1]?.value ?? 0
   }
 
-  selectLevelFromNumberKey(key: string): boolean {
-    if (!/^[1-9]$/.test(key)) {
-      return false
+  getShotDirection(aimDirection: THREE.Vector3): THREE.Vector3 {
+    const horizontalAim = new THREE.Vector3(aimDirection.x, 0, aimDirection.z)
+    if (horizontalAim.lengthSq() === 0) {
+      return new THREE.Vector3()
     }
-    return this.selectLevel(Number(key) - 1)
+
+    return horizontalAim
+      .normalize()
+      .applyAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        THREE.MathUtils.degToRad(this.settings.directionDegrees)
+      )
   }
 
-  selectNextLevel(): HitStrengthLevel {
-    this.selectedLevelIndex = (this.selectedLevelIndex + 1) % this.levels.length
-    return this.getSelectedLevel()
+  setSettings(settings: Partial<ShotSettings>): void {
+    this.settings = {
+      ...this.settings,
+      ...settings,
+    }
+    this.clampSettings()
   }
 
-  selectPreviousLevel(): HitStrengthLevel {
-    this.selectedLevelIndex =
-      (this.selectedLevelIndex - 1 + this.levels.length) % this.levels.length
-    return this.getSelectedLevel()
+  getSettings(): Readonly<ShotSettings> {
+    return this.settings
   }
 
-  getSelectedLevel(): HitStrengthLevel {
-    return this.levels[this.selectedLevelIndex]
+  getClubHeadSpeed(): number {
+    const minimumSpeed = Math.min(this.settings.minClubHeadSpeed, this.settings.maxClubHeadSpeed)
+    const maximumSpeed = Math.max(this.settings.minClubHeadSpeed, this.settings.maxClubHeadSpeed)
+    const powerFactor = THREE.MathUtils.clamp(this.settings.hitPower, 0, 100) / 100
+
+    return THREE.MathUtils.lerp(minimumSpeed, maximumSpeed, powerFactor)
   }
 
   reset(): void {
     this.animationTime = 0
     this.isAnimating = false
-    this.clubObject.rotation.copy(this.restRotation)
+    this.clubObject.rotation.x = -0.48
+  }
+
+  private clampSettings(): void {
+    this.settings.hitPower = THREE.MathUtils.clamp(this.settings.hitPower, 0, 100)
+    this.settings.minClubHeadSpeed = Math.max(0, this.settings.minClubHeadSpeed)
+    this.settings.maxClubHeadSpeed = Math.max(0, this.settings.maxClubHeadSpeed)
+    this.settings.launchAngleDegrees = THREE.MathUtils.clamp(
+      this.settings.launchAngleDegrees,
+      0,
+      45
+    )
+    this.settings.directionDegrees = THREE.MathUtils.euclideanModulo(
+      this.settings.directionDegrees,
+      360
+    )
+    this.settings.spinPercent = THREE.MathUtils.clamp(this.settings.spinPercent, -100, 100)
+    this.settings.sideSpinPercent = THREE.MathUtils.clamp(this.settings.sideSpinPercent, -100, 100)
+    this.settings.effectiveClubMass = Math.max(0.01, this.settings.effectiveClubMass)
+    this.settings.restitution = THREE.MathUtils.clamp(this.settings.restitution, 0, 1)
+    this.settings.friction = Math.max(0, this.settings.friction)
+    this.settings.showTrajectoryPreview = Boolean(this.settings.showTrajectoryPreview)
   }
 }

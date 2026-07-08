@@ -26,14 +26,7 @@ export class Renderer {
    */
   private instance: THREE.WebGLRenderer;
 
-  /**
-   * Reference to sizes utility.
-   */
-  private sizes: Sizes;
-
   constructor(canvas: HTMLCanvasElement, sizes: Sizes) {
-    this.sizes = sizes;
-
     // Create renderer
     this.instance = new THREE.WebGLRenderer({
       canvas,
